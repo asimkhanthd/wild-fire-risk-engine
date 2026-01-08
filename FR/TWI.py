@@ -15,14 +15,14 @@ def twi(input_folder:str='INPUT',output_folder:str="OUTPUT",export_image:bool=Fa
         output_folder (str, optional): _description_. Defaults to "OUTPUT".
         export_image (bool, optional): _description_. Defaults to False.
     """
-    valids,invalids=check_valid_entries(["B01","B03","B05","B06","B08","B12"],input_folder=input_folder)
+    valids,_=check_valid_entries(["B01","B03","B05","B06","B08","B12"],input_folder=input_folder)
 
-    _,meta_ref,info=read_and_group(valids)
+    _,_,info=read_and_group(valids)
       
     np.seterr(divide='ignore', invalid='ignore')        
 
     twi =[ 2.84 * (info['B05'][i] - info['B06'][i]) / (info['B03'][i] + info['B12'][i]) + 
-          ( 1.25 * ( info['B03'][i] - info['B01'][i] ) - ( info['B08'][4] - info['B01'][i] ) ) / ( info['B08'][i] + 1.25 *  info['B03'][i] - 0.25 * info['B01'][i] )  
+          ( 1.25 * ( info['B03'][i] - info['B01'][i] ) - ( info['B08'][i] - info['B01'][i] ) ) / ( info['B08'][i] + 1.25 *  info['B03'][i] - 0.25 * info['B01'][i] )  
           for i in range(len(info['id'])) ]
 
     tiff_dir=Path(output_folder)/'TWI'/'TIFFs'
@@ -33,7 +33,7 @@ def twi(input_folder:str='INPUT',output_folder:str="OUTPUT",export_image:bool=Fa
     if export_image:
 
         for twi_i,meta_ref_i,extra_info in zip(twi,info['meta_ref'],info['id']):
-    
+            print(meta_ref_i)
             save_tiffs(twi_i,meta_ref_i,extra_info,'TWI',tiff_dir)
             plt.figure(figsize=(8,6)); 
             plt.imshow(twi_i, cmap='RdYlGn'); plt.colorbar(); plt.title('TWI'); plt.tight_layout()

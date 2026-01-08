@@ -209,8 +209,9 @@ def read_and_group(valids:list[dict]):
             with rasterio.open(path) as src:
 
                 if listado['fecha_inicio'] not in meta_ref:
+
                     meta_ref[listado['fecha_inicio']]=src.meta.copy()
-                    good_dict['meta_ref']=src.meta.copy()
+                    good_dict['meta_ref'].append(src.meta.copy())
                     
                 bands.append(src.read(1).astype(np.float32))
 
@@ -224,6 +225,7 @@ def read_and_group(valids:list[dict]):
     return entry_arrays_tiffs,meta_ref,good_dict
 
 def save_tiffs(array:npt.NDArray[np.float32],meta:dict,id_name:str,type_name:str,output_path:Path)->None:
+    
     meta_i=meta.copy()
     meta_i.update(driver='GTiff', dtype='float32', count=1)
 

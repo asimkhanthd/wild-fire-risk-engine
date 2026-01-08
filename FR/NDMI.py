@@ -9,9 +9,9 @@ from pathlib import Path
 def Ndmi(input_folder:str='INPUT',output_folder:str="OUTPUT",export_image:bool=False)->None:
 
 
-    valids,invalids=check_valid_entries(["B08","B11"],input_folder=input_folder)
+    valids,_=check_valid_entries(["B08","B11"],input_folder=input_folder)
 
-    _,meta_ref,info=read_and_group(valids)
+    _,_,info=read_and_group(valids)
 
     np.seterr(divide='ignore', invalid='ignore')
 

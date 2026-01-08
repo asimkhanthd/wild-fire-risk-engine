@@ -1,29 +1,32 @@
 import os
 import rasterio
 import numpy as np
-from rasterio.warp import calculate_default_transform, reproject, Resampling
 import matplotlib.pyplot as plt
 import geopandas as gpd
+
+from itertools import groupby
+from pathlib import Path
+
+from setup import reproject_raster,parse_filename,band_date_sort
+from rasterio.warp import reproject, Resampling
 from rasterio.mask import mask
 
 def Fhist(folder_pre, folder_post, output_fhist,export_image:bool=False)->None:
 
+    input_folder=Path('INPUT/HIST')
 
-    def reproject_raster(src_path:str, dst_crs:str = "EPSG:32629")->tuple[np.ndarray, dict]:
+    prev_folder=input_folder/'PRE_FIRE'
+    post_folder=input_folder/'POST_FIRE'
 
-        with rasterio.open(src_path) as src:
+    prev_files=[file.name for file in prev_folder.iterdir() if file.is_file() and file.suffix=='.tiff']
+    post_files=[file.name for file in post_folder.iterdir() if file.is_file() and file.suffix=='.tiff']
+    
+    prev_files=sorted(prev_files,key=band_date_sort)
+    post_files=sorted(post_files,key=band_date_sort)
 
-            transform, width, height = calculate_default_transform(src.crs, dst_crs, src.width, src.height, *src.bounds)
-            kwargs = src.meta.copy()
-            kwargs.update({'crs': dst_crs, 'transform': transform, 'width': width, 'height': height})
+    prev_files_dict={k:list(v) for k,v in groupby(prev_files,key=lambda x: parse_filename(x)['banda'])}
+    post_files_dict={k:list(v) for k,v in groupby(post_files,key=lambda x: parse_filename(x)['banda'])}
 
-            dest_array = np.empty((height, width), dtype=src.dtypes[0])
-
-            reproject(source=rasterio.band(src, 1), destination=dest_array,
-                      src_transform=src.transform, src_crs=src.crs,
-                      dst_transform=transform, dst_crs=dst_crs, resampling=Resampling.nearest)
-            
-            return dest_array, kwargs
 
     def calcular_dnbr(b8_may, b12_may, b8_oct, b12_oct, idx):
         year = 2016 + idx
@@ -181,3 +184,13 @@ def Fhist(folder_pre, folder_post, output_fhist,export_image:bool=False)->None:
         print('Historical Burned Areas Layer completed without saving.')
 
     return
+
+
+
+from datetime import datetime
+
+if __name__ == "__main__":
+    ala=datetime.strptime('2024-01-01-00_00', '%Y-%m-%d-%H_%M')
+
+    print(f'{ala}')
+

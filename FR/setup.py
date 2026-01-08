@@ -3,15 +3,18 @@ import shutil
 import re
 import rasterio
 import numpy as np
+import numpy.typing as npt
 
 from pathlib import Path
 from datetime import datetime as time
 from collections import defaultdict
 from typing import Literal
 from itertools import batched
-import numpy.typing as npt
 
-def parse_filename(filename:str,specific:str|None=None)->dict[str,str]|None:
+from rasterio.warp import calculate_default_transform, reproject, Resampling
+from datetime import datetime
+
+def parse_filename(filename:str,date_format:str="%Y-%m-%d-%H_%M")->dict[str,str|datetime]:
     
     """
     Parsea nombres de archivo con el patrón Sentinel.
@@ -39,9 +42,7 @@ def parse_filename(filename:str,specific:str|None=None)->dict[str,str]|None:
                 'banda': match.group('banda'),
                 'filename': filename
             }
-
-        
-
+    return {}
 def get_output_folder(input_folder:str):
     if not os.path.isdir(input_folder):
         raise ValueError(f"The provided path '{input_folder}' is not a valid directory.")
@@ -58,14 +59,14 @@ def get_output_folder(input_folder:str):
     
     return output_folder
 
-def band_date_sort(file:str)->tuple[str,str,str]:
+def band_date_sort(file:str):
     if info:=parse_filename(file):
         # print(info.group('banda'),info.group('fecha_inicio'))
         return (info['satelite'],info['banda'],info['fecha_inicio'])
     else:
         raise ValueError(f"Filename '{file}' does not match expected pattern.")
 
-def sort_fire_comparative(band_folder:Path|None=None,date_format:str="%Y-%m-%d-%H_%M")->None:
+def sort_time_comparative(band_folder:Path|None=None,date_format:str="%Y-%m-%d-%H_%M")->None:
     """Initially filled folder with pairs of files showcasing the before and after fire
 
     Args:
@@ -108,9 +109,9 @@ def sort_fire_comparative(band_folder:Path|None=None,date_format:str="%Y-%m-%d-%
     
 
     else:
+        #TODO: Implement other date formats
         raise NotImplementedError(f"Date format '{date_format}' not implemented yet.")
-
-    
+ 
 def check_valid_entries(bands:list[str],input_folder:str="INPUT",
                         satelite:Literal['Sentinel-2']='Sentinel-2')->tuple[list[dict],list[dict]]:
     
@@ -210,7 +211,7 @@ def read_and_group(valids:list[dict]):
                     
                 bands.append(src.read(1).astype(np.float32))
 
-                current_band=parse_filename(path.name,'banda')
+                current_band=parse_filename(path.name)['banda']
                 good_dict[current_band].append(src.read(1).astype(np.float32))
 
         name_keys = ['fecha_inicio', 'fecha_fin', 'satelite', 'nivel']
@@ -231,7 +232,22 @@ def save_tiffs(array:npt.NDArray[np.float32],meta:dict,id_name:str,type_name:str
         dst.write(array.astype('float32'),1)
     with rasterio.open(tif_dir,'w',**meta) as dst:
         dst.write(array.astype('float32'),1)
-    
+
+def reproject_raster(src_path:str|Path, dst_crs:str = "EPSG:32629")->tuple[np.ndarray, dict]:
+
+    with rasterio.open(src_path) as src:
+
+        transform, width, height = calculate_default_transform(src.crs, dst_crs, src.width, src.height, *src.bounds)
+        kwargs = src.meta.copy()
+        kwargs.update({'crs': dst_crs, 'transform': transform, 'width': width, 'height': height})
+
+        dest_array = np.empty((height, width), dtype=src.dtypes[0])
+
+        reproject(source=rasterio.band(src, 1), destination=dest_array,
+                    src_transform=src.transform, src_crs=src.crs,
+                    dst_transform=transform, dst_crs=dst_crs, resampling=Resampling.nearest)
+        
+        return dest_array, kwargs
 
 if __name__ == "__main__":
     # valid,falty=check_valid_entries(["B04","B08"])
@@ -246,4 +262,4 @@ if __name__ == "__main__":
     # print(c['id'])
     # print('='*200)
     # print(c[['B04','BO8']])
-    sort_fire_comparative()
+    sort_time_comparative()

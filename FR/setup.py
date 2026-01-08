@@ -8,7 +8,7 @@ from pathlib import Path
 from datetime import datetime as time
 from collections import defaultdict
 from typing import Literal
-
+from itertools import batched
 import numpy.typing as npt
 
 def parse_filename(filename:str,specific:str|None=None)->dict[str,str]|None:
@@ -17,6 +17,9 @@ def parse_filename(filename:str,specific:str|None=None)->dict[str,str]|None:
     Parsea nombres de archivo con el patrón Sentinel.
     Ejemplo: '2023-01-01-10_30_2023-01-15-10_30_Sentinel-2_L2A_B02_(Raw'
     """
+
+    #TODO: Incorporar estructurad de expresion regular para otros satelites
+
     full_pattern = re.compile(
         r"(?P<fecha_inicio>\d{4}-\d{2}-\d{2}-\d{2}_\d{2})_"
         r"(?P<fecha_fin>\d{4}-\d{2}-\d{2}-\d{2}_\d{2})_"
@@ -28,7 +31,7 @@ def parse_filename(filename:str,specific:str|None=None)->dict[str,str]|None:
     match = full_pattern.match(filename)
 
     if match:
-        final_result={
+        return {
                 'fecha_inicio': match.group('fecha_inicio'),
                 'fecha_fin': match.group('fecha_fin'),
                 'satelite': match.group('satelite'),
@@ -37,7 +40,7 @@ def parse_filename(filename:str,specific:str|None=None)->dict[str,str]|None:
                 'filename': filename
             }
 
-        return final_result if not specific else final_result.get(specific,None)
+        
 
 def get_output_folder(input_folder:str):
     if not os.path.isdir(input_folder):
@@ -55,8 +58,14 @@ def get_output_folder(input_folder:str):
     
     return output_folder
 
+def band_date_sort(file:str)->tuple[str,str,str]:
+    if info:=parse_filename(file):
+        # print(info.group('banda'),info.group('fecha_inicio'))
+        return (info['satelite'],info['banda'],info['fecha_inicio'])
+    else:
+        raise ValueError(f"Filename '{file}' does not match expected pattern.")
 
-def sort_fire_comparative(band_folder:str|None=None,date_format:str="%Y-%m-%d-%H_%M")->None:
+def sort_fire_comparative(band_folder:Path|None=None,date_format:str="%Y-%m-%d-%H_%M")->None:
     """Initially filled folder with pairs of files showcasing the before and after fire
 
     Args:
@@ -65,51 +74,37 @@ def sort_fire_comparative(band_folder:str|None=None,date_format:str="%Y-%m-%d-%H
     """
 
     if not band_folder:
-        band_folder=r"..\INPUT\HIST"
+        band_folder=Path("INPUT")
 
-    pre_fire_folder=os.path.join(band_folder,"PRE_FIRE")
-    post_fire_folder=os.path.join(band_folder,"POST_FIRE")
+    band_folder.mkdir(parents=True, exist_ok=True)
 
-    os.makedirs(pre_fire_folder,exist_ok=True)
-    os.makedirs(post_fire_folder,exist_ok=True)
+    pre_fire_folder=band_folder/'HIST'/"PRE_FIRE"
+    post_fire_folder=band_folder/'HIST'/"POST_FIRE"
+
+    pre_fire_folder.mkdir(parents=True, exist_ok=True)
+    post_fire_folder.mkdir(parents=True, exist_ok=True)
 
 
     if date_format=="%Y-%m-%d-%H_%M":
+    
+        archivos= [file.name for file in band_folder.iterdir() if file.is_file()]
+        it = sorted(archivos,key=band_date_sort)
 
-        file_pattern = re.compile(
-            r"(?P<fecha_inicio>\d{4}-\d{2}-\d{2}-\d{2}_\d{2})_"+
-            r"(?P<fecha_fin>\d{4}-\d{2}-\d{2}-\d{2}_\d{2})_"+
-            r"(?P<satelite>Sentinel-\d+)_"+
-            r"(?P<nivel>L\d[A-Z])_"+
-            r"(?P<banda>B\d+A?)_"+
-            r"\(Raw\)\.tiff"
-        )
+        print(it)
 
-        def band_date_sort(file:str)->tuple[str,str,str]:
-            if match:=file_pattern.match(file):
-                # print(match.group('banda'),match.group('fecha_inicio'))
-                return (match.group('satelite'),match.group('banda'),match.group('fecha_inicio'))
-            else:
-                raise ValueError(f"Filename '{file}' does not match expected pattern.")
+        for prev_fire,post_fire in batched(it,2):
 
-        it = iter(
-            sorted([f for f in os.listdir(band_folder) 
-                        if os.path.isfile(os.path.join(band_folder, f))]
-                    , key=band_date_sort)
-                    )
+            prev_data=parse_filename(prev_fire)
+            post_data=parse_filename(post_fire)
 
-        for prev_fire,post_fire in list(zip(it,it)):
-
-            prev_data=file_pattern.match(prev_fire)
-            post_data=file_pattern.match(post_fire)
 
             if prev_data and post_data:
 
-                if prev_data.group('banda') != post_data.group('banda'):
+                if prev_data['banda'] != post_data['banda']:
                     raise ValueError(f"Mismatched bands: \n{prev_fire} \n and \n{post_fire} do not belong to the same band.")
 
-                shutil.move(os.path.join(band_folder,prev_fire),os.path.join(pre_fire_folder,prev_fire))
-                shutil.move(os.path.join(band_folder,post_fire),os.path.join(post_fire_folder,post_fire))
+                shutil.move(band_folder/prev_fire,pre_fire_folder/prev_fire)
+                shutil.move(band_folder/post_fire,post_fire_folder/post_fire)
     
 
     else:
@@ -239,15 +234,16 @@ def save_tiffs(array:npt.NDArray[np.float32],meta:dict,id_name:str,type_name:str
     
 
 if __name__ == "__main__":
-    valid,falty=check_valid_entries(["B04","B08"])
-    a,b,c=read_and_group(valid)
+    # valid,falty=check_valid_entries(["B04","B08"])
+    # a,b,c=read_and_group(valid)
 
 
-    print(valid)
-    print('='*200)
-    print(falty)
-    print('='*200)
-    print('='*200)
-    print(c['id'])
-    print('='*200)
-    print(c[['B04','BO8']])
+    # print(valid)
+    # print('='*200)
+    # print(falty)
+    # print('='*200)
+    # print('='*200)
+    # print(c['id'])
+    # print('='*200)
+    # print(c[['B04','BO8']])
+    sort_fire_comparative()

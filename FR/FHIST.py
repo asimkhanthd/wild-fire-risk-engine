@@ -6,31 +6,33 @@ import matplotlib.pyplot as plt
 import geopandas as gpd
 from rasterio.mask import mask
 
-def Fhist(folder_pre, folder_post, output_fhist):
-    print('Historical Burned Areas Layer processing...')
-    save = input("¿Deseas guardar el mapa reclasificado y los rasters? (y/n): ").strip().lower() in ('y','yes')
+def Fhist(folder_pre, folder_post, output_fhist,export_image:bool=False)->None:
 
-    def reproyectar_a_epsg_32629(src_path):
-        """Reproyecta raster sin guardar a disco - retorna array en memoria"""
-        dst_crs = "EPSG:32629"
+
+    def reproject_raster(src_path:str, dst_crs:str = "EPSG:32629")->tuple[np.ndarray, dict]:
+
         with rasterio.open(src_path) as src:
+
             transform, width, height = calculate_default_transform(src.crs, dst_crs, src.width, src.height, *src.bounds)
             kwargs = src.meta.copy()
             kwargs.update({'crs': dst_crs, 'transform': transform, 'width': width, 'height': height})
+
             dest_array = np.empty((height, width), dtype=src.dtypes[0])
+
             reproject(source=rasterio.band(src, 1), destination=dest_array,
                       src_transform=src.transform, src_crs=src.crs,
                       dst_transform=transform, dst_crs=dst_crs, resampling=Resampling.nearest)
+            
             return dest_array, kwargs
 
     def calcular_dnbr(b8_may, b12_may, b8_oct, b12_oct, idx):
         year = 2016 + idx
         
         # Reproyectar todo en memoria sin guardar intermedios
-        nir_m, meta_m = reproyectar_a_epsg_32629(b8_may)
-        swir_m, _ = reproyectar_a_epsg_32629(b12_may)
-        nir_o, _ = reproyectar_a_epsg_32629(b8_oct)
-        swir_o, meta_o = reproyectar_a_epsg_32629(b12_oct)
+        nir_m, meta_m = reproject_raster(b8_may)
+        swir_m, _ = reproject_raster(b12_may)
+        nir_o, _ = reproject_raster(b8_oct)
+        swir_o, meta_o = reproject_raster(b12_oct)
 
         # Calcular NBR e dNBR en memoria
         nir_m = nir_m.astype('float32')
@@ -124,7 +126,8 @@ def Fhist(folder_pre, folder_post, output_fhist):
     plt.close()
 
     # Guardar si el usuario lo solicita
-    if save:
+    if export_image:
+
         rasters_dir = r'C:\Users\Mateo G\Desktop\STORCITO\Salida Datos\re'
         png_dir = r'C:\Users\Mateo G\Desktop\STORCITO\Salida Datos\HIST'
         os.makedirs(rasters_dir, exist_ok=True)

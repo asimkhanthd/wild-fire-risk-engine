@@ -35,8 +35,8 @@ def parse_filename(filename:str,date_format:str="%Y-%m-%d-%H_%M")->dict[str,str|
 
     if match:
         return {
-                'fecha_inicio': match.group('fecha_inicio'),
-                'fecha_fin': match.group('fecha_fin'),
+                'fecha_inicio': datetime.strptime(match.group('fecha_inicio'), date_format),
+                'fecha_fin': datetime.strptime(match.group('fecha_fin'), date_format),
                 'satelite': match.group('satelite'),
                 'nivel': match.group('nivel'),
                 'banda': match.group('banda'),
@@ -79,8 +79,8 @@ def sort_time_comparative(band_folder:Path|None=None,date_format:str="%Y-%m-%d-%
 
     band_folder.mkdir(parents=True, exist_ok=True)
 
-    pre_fire_folder=band_folder/'HIST'/"PRE_FIRE"
-    post_fire_folder=band_folder/'HIST'/"POST_FIRE"
+    pre_fire_folder=band_folder/"PRE_FIRE"
+    post_fire_folder=band_folder/"POST_FIRE"
 
     pre_fire_folder.mkdir(parents=True, exist_ok=True)
     post_fire_folder.mkdir(parents=True, exist_ok=True)
@@ -91,7 +91,7 @@ def sort_time_comparative(band_folder:Path|None=None,date_format:str="%Y-%m-%d-%
         archivos= [file.name for file in band_folder.iterdir() if file.is_file()]
         it = sorted(archivos,key=band_date_sort)
 
-        print(it)
+        print(f'Sorted files : {it}')
 
         for prev_fire,post_fire in batched(it,2):
 
@@ -220,18 +220,20 @@ def read_and_group(valids:list[dict]):
 
     return entry_arrays_tiffs,meta_ref,good_dict
 
-def save_tiffs(array:npt.NDArray[np.float32],meta:dict,id_name:str,type_name:str,output_path:Path)->None:
+def save_tiffs(array:npt.NDArray,meta:dict,id_name:str,type_name:str,output_folder:Path)->tuple[Path,Path]:
     
     meta_i=meta.copy()
     meta_i.update(driver='GTiff', dtype='float32', count=1)
 
-    tiff_dir=output_path/f'{id_name}_({type_name}).tiff'
-    tif_dir=output_path/f'{id_name}_({type_name}).tif'
+    tiff_dir=output_folder/f'{id_name}_({type_name}).tiff'
+    tif_dir=output_folder/f'{id_name}_({type_name}).tif'
 
     with rasterio.open(tiff_dir,'w',**meta) as dst:
         dst.write(array.astype('float32'),1)
     with rasterio.open(tif_dir,'w',**meta) as dst:
         dst.write(array.astype('float32'),1)
+
+    return tiff_dir,tif_dir
 
 def reproject_raster(src_path:str|Path, dst_crs:str = "EPSG:32629")->tuple[np.ndarray, dict]:
 

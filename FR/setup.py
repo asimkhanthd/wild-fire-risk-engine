@@ -101,7 +101,7 @@ def sort_time_comparative(band_folder:Path|None=None,date_format:str="%Y-%m-%d-%
         archivos= [file.name for file in band_folder.iterdir() if file.is_file()]
         it = sorted(archivos,key=band_date_sort)
 
-        print(f'Sorted files : {it}')
+        # print(f'Sorted files : {it}')
 
         for prev_fire,post_fire in batched(it,2):
 
@@ -231,20 +231,31 @@ def read_and_group(valids:list[dict]):
 
     return entry_arrays_tiffs,meta_ref,good_dict
 
-def save_tiffs(array:npt.NDArray,meta:dict,id_name:str,type_name:str,output_folder:Path)->tuple[Path,Path]:
+def save_file(array: npt.NDArray, meta: dict, id_name: str, type_name: str, output_folder: Path, extensions: list[str] =['tif', 'tiff']) -> tuple[Path, ...]:
+    """Guarda array en múltiples formatos TIFF.
     
-    meta_i=meta.copy()
+    Args:
+        array: Array de datos a guardar
+        meta: Metadatos rasterio
+        id_name: Nombre base del archivo
+        type_name: Sufijo descriptivo (ej: 'Fire_History_Sum')
+        output_folder: Directorio de salida
+        extensions: Lista de extensiones a guardar (default: ['tif', 'tiff'])
+    
+    Returns:
+        Tupla de rutas Path guardadas
+    """
+    
+    meta_i = meta.copy()
     meta_i.update(driver='GTiff', dtype='float32', count=1)
 
-    tiff_dir=output_folder/f'{id_name}_({type_name}).tiff'
-    tif_dir=output_folder/f'{id_name}_({type_name}).tif'
+    files_2_save = tuple([output_folder / f'{id_name}_({type_name}).{extension}' for extension in extensions])
+    
+    for file in files_2_save:
+        with rasterio.open(file, 'w', **meta_i) as dst:
+            dst.write(array.astype('float32'), 1)
 
-    with rasterio.open(tiff_dir,'w',**meta) as dst:
-        dst.write(array.astype('float32'),1)
-    with rasterio.open(tif_dir,'w',**meta) as dst:
-        dst.write(array.astype('float32'),1)
-
-    return tiff_dir,tif_dir
+    return files_2_save
 
 def reproject_raster(src_path:str|Path, dst_crs:str = "EPSG:32629")->tuple[np.ndarray, dict]:
 

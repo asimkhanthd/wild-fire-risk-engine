@@ -5,7 +5,7 @@ import numpy.ma as ma
 from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
 import rutinas.FWI_Equations as Fwi
-import tifffile as tif
+# import tifffile as tif
 import rasterio
 from rasterio.transform import from_origin
 

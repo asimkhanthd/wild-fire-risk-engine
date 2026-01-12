@@ -24,8 +24,8 @@ def GCI(input_folder:str='INPUT',output_folder:str='OUTPUT',export_image:bool=Fa
     gci =[ (info['B08'][i] / info['B03'][i]) - 1
           for i in range(len(info['id'])) ]
     
-    tiff_dir=Path(output_folder)/'GCI'/'TIFFs'
-    png_dir=Path(output_folder)/'GCI'/'PNGs'
+    tiff_dir=Path(output_folder)/'TIFFs'/'GCI'
+    png_dir=Path(output_folder)/'PNGs'/'GCI'
 
     tiff_dir.mkdir(parents=True, exist_ok=True); png_dir.mkdir(parents=True, exist_ok=True)
     
@@ -33,7 +33,7 @@ def GCI(input_folder:str='INPUT',output_folder:str='OUTPUT',export_image:bool=Fa
 
         for gci_i,meta_ref_i,extra_info in zip(gci,info['meta_ref'],info['id']):
     
-            save_tiffs(gci_i,meta_ref_i,extra_info,'TWI',tiff_dir)
+            save_file(gci_i,meta_ref_i,extra_info,'TWI',tiff_dir)
 
             # Guardar PNGs en carpeta separada
             plt.figure(figsize=(8,6)); 

@@ -12,9 +12,12 @@ from rasterio.warp import reproject, Resampling
 from rasterio.mask import mask
 from rasterio.io import MemoryFile
 
+BUFFER_SIZE=660
+BURNED_THRESHOLD=0.27
+
 def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),export_image:bool=False)->None:
 
-    reference_folder=Path('REFERENCE')
+    reference_folder=Path('REFERENCE')/'HIST'
 
 
     sort_time_comparative(input_folder)
@@ -54,7 +57,7 @@ def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),export_image:
     def _load_reference_geometries(year: int) -> list:
         """Carga y procesa geometrías de referencia con buffer de 660m."""
         historico = gpd.read_file(reference_folder/f'hist_{year}.shp')
-        buff = historico.geometry.buffer(660)
+        buff = historico.geometry.buffer(BUFFER_SIZE)
         buff_gdf = gpd.GeoDataFrame({'geometry': buff}, crs=historico.crs)
         return list(buff_gdf.dissolve().geometry)
 
@@ -88,7 +91,7 @@ def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),export_image:
         dnbr = nbr_pre - nbr_post
         
         # Reclasificar: valores < 0.27 = no quemado (0), >= 0.27 = quemado (1)
-        reclassified = np.where(dnbr < 0.27, 0, 1).astype('int32')
+        reclassified = np.where(dnbr < BURNED_THRESHOLD, 0, 1).astype('int32')
         
         # Aplicar máscara de geometrías
         geometries = _load_reference_geometries(year)
@@ -147,6 +150,7 @@ def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),export_image:
     # Mostrar imágenes desde datos en memoria
     cumulative_figure, ax1 = default_imshow(suma_total,f'Historical Burned Sum ({time_range})')
     plt.show()
+
     reclasified_figure, ax2 = default_imshow(reclas,f'Historical Burned Areas Risk Map ({time_range})',
                                              colorbar_params={'ticks':[1,2,3,4,5], 'label':'Risk'})
     plt.show()

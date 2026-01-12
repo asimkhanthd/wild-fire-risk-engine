@@ -219,8 +219,6 @@ def check_valid_entries(bands: list[str], input_folder: str = "INPUT",
         raise FileNotFoundError(msg)
     
     return complete_entries, incomplete_entries
-    
-    return resultados_completos, resultados_incompletos
 
 def read_and_group(valids:list[dict]):
     """_summary_
@@ -256,8 +254,9 @@ def read_and_group(valids:list[dict]):
                 good_dict[current_band].append(src.read(1).astype(np.float32))
 
         name_keys = ['fecha_inicio', 'fecha_fin', 'satelite', 'nivel']
-        entry_arrays_tiffs["_".join(listado[k] for k in name_keys)]=bands
-        good_dict['id'].append("_".join(listado[k] for k in name_keys))
+        id="_".join(listado[k] for k in name_keys)
+        entry_arrays_tiffs[id]=bands
+        good_dict['id'].append(id)
 
     return entry_arrays_tiffs,meta_ref,good_dict
 

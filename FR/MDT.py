@@ -12,10 +12,6 @@ def mdt(ruta_mdt, ruta_slope, ruta_aspect,
     export_image=False
     print('MDT, SLOPE and ASPECT Layers processing...')
 
-    # preguntar si guardar rasters .tif y PNGs
-    # while True:
-    #     ans = input("定Guardar rasters .tif y PNGs al terminar? (y/n): ").strip().lower()
-    #     print("Introduce 'y' o 'n'.")
 
     rasters_dir = output_folder/'TIFFs'/'MDT'
     png_dir = output_folder/'PNGs'/'MDT'

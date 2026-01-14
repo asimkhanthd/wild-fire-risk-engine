@@ -11,52 +11,89 @@ from pathlib import Path
 from rasterio.features import rasterize
 from rasterio.transform import from_bounds
 import time
+from typing import Union
+from shapely.geometry.base import BaseGeometry
 
 # sys.path.append(r'..\geo_auxy')
 
-def infrastructure(input_infra:str|Path,
-                   output_folder:str|Path=Path('OUTPUT'),
-                   ref_raster:str=r'reference\MDT\DEM_NationalScenario_2013.tif',
-                   epsg:int=32629, 
-                   export_image:bool=False, 
-                   simplify:bool=False, tolerance=10):
+def _create_risk_rings(geometry: BaseGeometry, radii: list[int], risks: list[int]) -> gpd.GeoDataFrame:
+    """Crea anillos concéntricos de riesgo alrededor de geometría.
     
-    if isinstance(input_infra, str):
-        input_infra = Path(input_infra)
-    if isinstance(output_folder, str):
-        output_folder = Path(output_folder)
-
-    # 1. Leer y reproyectar
-    road = gpd.read_file(input_infra)
-    road_re = road.to_crs(epsg=epsg)
-    
-    # 2. Simplificar
-    if simplify:
-        road_re['geometry'] = road_re.geometry.simplify(tolerance=tolerance)
-
-    
-    # 3. Unión total
-    road_union = road_re.geometry.union_all()
-
-    
-    # 4. Buffers y anillos
-    radii = [250, 500, 750, 1000, 1250]
-    risks = [5, 4, 3, 2, 1]
-    
-    buffers = [road_union.buffer(r) for r in radii]
-    
-    anillos_data = []
-    for i, (buff, risk) in enumerate(zip(buffers, risks)):
+    Args:
+        geometry: Geometría unificada (buffer inicial)
+        radii: Lista de radios para los buffers en metros
+        risks: Lista de valores de riesgo correspondientes
         
+    Returns:
+        GeoDataFrame con geometría de anillos y valores de riesgo
+    """
+    buffers = [geometry.buffer(r) for r in radii]
+    anillos_data = []
+    
+    for i, (buff, risk) in enumerate(zip(buffers, risks)):
+        # Primer anillo es el buffer completo, resto son diferencias
         anillo = buff if i == 0 else buff.difference(buffers[i-1])
         
         if not anillo.is_empty:
             anillos_data.append({'geometry': anillo, 'risk': risk})
     
-    anillos = gpd.GeoDataFrame(anillos_data, crs=road_re.crs)
+    return gpd.GeoDataFrame(anillos_data)
+
+def infrastructure(input_infra: str|Path,
+                   output_folder: str|Path = Path('OUTPUT'),
+                   ref_raster: str|Path = Path(r'REFERENCE\MDT\DEM_NationalScenario_2013.tif'),
+                   epsg: int = 32629, 
+                   export_image: bool = False, 
+                   simplify: bool = False, 
+                   tolerance: int = 10) -> npt.NDArray:
+    """_summary_
+
+    Args:
+        input_infra (str | Path): _description_
+        output_folder (str | Path, optional): _description_. Defaults to Path('OUTPUT').
+        ref_raster (str, optional): _description_. Defaults to Path('REFERENCE/MDT/DEM_NationalScenario_2013.tif').
+        epsg (int, optional): _description_. Defaults to 32629.
+        export_image (bool, optional): _description_. Defaults to False.
+        simplify (bool, optional): _description_. Defaults to False.
+        tolerance (int, optional): _description_. Defaults to 10.
+
+    Raises:
+        FileNotFoundError: _description_
+
+    Returns:
+        npt.NDArray: _description_
+    """
     
-    # 5. Parámetros de rasterización
- 
+    # Validar y convertir paths
+    if isinstance(input_infra, str):
+        input_infra = Path(input_infra)
+    if isinstance(output_folder, str):
+        output_folder = Path(output_folder)
+    
+    # Validar existencia de archivos
+    if not input_infra.exists():
+        raise FileNotFoundError(f"Archivo de infraestructura no encontrado: {input_infra}")
+    if not Path(ref_raster).exists():
+        raise FileNotFoundError(f"Raster de referencia no encontrado: {ref_raster}")
+    
+    # Leer y reproyectar infraestructuras
+    road = gpd.read_file(input_infra).to_crs(epsg=epsg)
+    
+    # Simplificar geometrías si se solicita
+    if simplify:
+        road['geometry'] = road.geometry.simplify(tolerance=tolerance)
+
+    
+    # Unión de todas las infraestructuras en una geometría única
+    road_union = road.geometry.union_all()
+    
+    # Crear anillos de riesgo concéntricos
+    radii = [250, 500, 750, 1000, 1250]
+    risks = [5, 4, 3, 2, 1]
+    anillos = _create_risk_rings(road_union, radii, risks)
+    anillos.crs = road.crs
+    
+    # Obtener parámetros de rasterización del raster de referencia
     with rasterio.open(ref_raster) as src:
         bounds = src.bounds
         x_min, y_min, x_max, y_max = bounds.left, bounds.bottom, bounds.right, bounds.top
@@ -68,7 +105,7 @@ def infrastructure(input_infra:str|Path,
     
     # 6. Rasterizar
 
-    geoms = [(geom, val) for geom, val in zip(anillos.geometry, anillos['risk'])]
+    geoms = ((geom, val) for geom, val in zip(anillos.geometry, anillos['risk']))
     raster_data = rasterize(
         geoms, 
         out_shape=(y_res, x_res), 
@@ -78,8 +115,7 @@ def infrastructure(input_infra:str|Path,
         all_touched=True
     )
     
-    # 7. Guardar
-
+    # Configuración de metadatos para guardar
     meta_info = {
         'driver': 'GTiff', 
         'height': y_res, 
@@ -91,26 +127,38 @@ def infrastructure(input_infra:str|Path,
         'compress': 'lzw'
     }
     
-    tif_dir=Path(output_folder)/'TIFFs'/'INFRASTURCTURE'
-    png_dir = Path(output_folder)/'PNGs'/'INFRASTURCTURE'
+    tif_dir = Path(output_folder) / 'TIFFs' / 'INFRASTRUCTURE'
+    png_dir = Path(output_folder) / 'PNGs' / 'INFRASTRUCTURE'
     
-    # 8. Imagen (opcional)
-    fig1, ax1 = default_imshow(raster_data,'Roads and Railways Risk Map',{'label':'Risk'})
-    fig1.set_size_inches((12,8))
+    # Visualizar resultado
+    fig1, ax1 = default_imshow(raster_data, 'Roads and Railways Risk Map', {'label': 'Risk'})
+    fig1.set_size_inches((12, 8))
     
+    # Guardar archivos si se solicita
     if export_image:
-
         tif_dir.mkdir(parents=True, exist_ok=True)
         png_dir.mkdir(parents=True, exist_ok=True)
-
-        with rasterio.open(tif_dir/f'{input_infra.stem}_(INFRA Risk_Map).tif', 'w', **meta_info) as dst:
+        
+        # Guardar como GeoTIFF
+        with rasterio.open(tif_dir / f'{input_infra.stem}_(INFRA Risk_Map).tif', 'w', **meta_info) as dst:
             dst.write(raster_data, 1)
-
-        fig1.savefig(png_dir/f'{input_infra.stem}_(INFRA Risk_Map).png', **DEFAULT_PLOT['save'])
+        
+        # Guardar como PNG
+        fig1.savefig(png_dir / f'{input_infra.stem}_(INFRA Risk_Map).png', **DEFAULT_PLOT['save'])
         plt.close()
+    
+    return raster_data
 
+
+import cProfile
+import pstats
 
 if __name__=='__main__':
-    infrastructure(r'reference\Infrastructures\infraestructuras_gal.shp',
-        export_image=True)
+    with cProfile.Profile() as profile:
+        infrastructure(r'INPUT\infraestructuras_gal.shp',
+            export_image=False)
 
+    results = pstats.Stats(profile)
+    results.sort_stats(pstats.SortKey.TIME)
+    results.print_stats(20)
+    # results.dump_stats("results.prof")

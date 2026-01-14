@@ -101,35 +101,33 @@ def sort_time_comparative(band_folder:Path|None=None,date_format:str="%Y-%m-%d-%
     pre_fire_folder=band_folder/"PRE_FIRE"
     post_fire_folder=band_folder/"POST_FIRE"
 
+    archivos= [file.name for file in band_folder.iterdir() if file.is_file()]
+
+    if len(archivos)<2:
+        return
+    
     pre_fire_folder.mkdir(parents=True, exist_ok=True)
     post_fire_folder.mkdir(parents=True, exist_ok=True)
 
+    it = sorted(archivos,key=band_date_sort)
 
-    if date_format=="%Y-%m-%d-%H_%M":
-    
-        archivos= [file.name for file in band_folder.iterdir() if file.is_file()]
-        it = sorted(archivos,key=band_date_sort)
+    # print(f'Sorted files : {it}')
 
-        # print(f'Sorted files : {it}')
+    for prev_fire,post_fire in batched(it,2):
 
-        for prev_fire,post_fire in batched(it,2):
-
-            prev_data=parse_filename(prev_fire)
-            post_data=parse_filename(post_fire)
+        prev_data=parse_filename(prev_fire,date_format=date_format)
+        post_data=parse_filename(post_fire,date_format=date_format)
 
 
-            if prev_data and post_data:
+        if prev_data and post_data:
 
-                if prev_data['banda'] != post_data['banda']:
-                    raise ValueError(f"Mismatched bands: \n{prev_fire} \n and \n{post_fire} do not belong to the same band.")
+            if prev_data['banda'] != post_data['banda']:
+                raise ValueError(f"Mismatched bands: \n{prev_fire} \n and \n{post_fire} do not belong to the same band.")
 
-                shutil.move(band_folder/prev_fire,pre_fire_folder/prev_fire)
-                shutil.move(band_folder/post_fire,post_fire_folder/post_fire)
+            shutil.move(band_folder/prev_fire,pre_fire_folder/prev_fire)
+            shutil.move(band_folder/post_fire,post_fire_folder/post_fire)
     
 
-    else:
-        #TODO: Implement other date formats
-        raise NotImplementedError(f"Date format '{date_format}' not implemented yet.")
  
 def check_valid_entries(bands: list[str], input_folder: str = "INPUT", 
                         satellite: Literal['Sentinel-2'] = 'Sentinel-2') -> tuple[list[dict], list[dict]]:
@@ -266,10 +264,13 @@ def default_imshow(array: npt.NDArray, title: str, colorbar_params: dict | None 
     Args:
         array: Array 2D a visualizar
         title: Título del gráfico
-        colorbar_params: Parámetros adicionales para la colorbar (default: {})
+        colorbar_params: Parámetros adicionales para la colorbar (ej: {'label': 'Risk'})
     
     Returns:
         Tupla (figura, ejes) de matplotlib
+        
+    Raises:
+        ValueError: Si array no es 2D
     """
     if colorbar_params is None:
         colorbar_params = {}

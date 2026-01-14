@@ -126,8 +126,6 @@ def sort_time_comparative(band_folder:Path|None=None,date_format:str="%Y-%m-%d-%
 
             shutil.move(band_folder/prev_fire,pre_fire_folder/prev_fire)
             shutil.move(band_folder/post_fire,post_fire_folder/post_fire)
-    
-
  
 def check_valid_entries(bands: list[str], input_folder: str = "INPUT", 
                         satellite: Literal['Sentinel-2'] = 'Sentinel-2') -> tuple[list[dict], list[dict]]:
@@ -282,25 +280,29 @@ def default_imshow(array: npt.NDArray, title: str, colorbar_params: dict | None 
 
     return fig1, ax1
 
-def save_file(array: npt.NDArray, meta: dict, id_name: str, type_name: str, output_folder: Path, extensions: list[str] =['tif', 'tiff']) -> tuple[Path, ...]:
-    """Guarda array en múltiples formatos TIFF.
-    
+def save_file(array: npt.NDArray, meta: dict, id_name: str, type_name: str, output_folder: Path, 
+              extensions: list[str]|str =['tif', 'tiff'],meta_intact:bool=False) -> tuple[Path, ...]:
+    """_summary_
+
     Args:
-        array: Array de datos a guardar
-        meta: Metadatos rasterio
-        id_name: Nombre base del archivo
-        type_name: Sufijo descriptivo (ej: 'Fire_History_Sum')
-        output_folder: Directorio de salida
-        extensions: Lista de extensiones a guardar (default: ['tif', 'tiff'])
-    
+        array (npt.NDArray): _description_
+        meta (dict): _description_
+        id_name (str): _description_
+        type_name (str): _description_
+        output_folder (Path): _description_
+        extensions (list[str] | str, optional): _description_. Defaults to ['tif', 'tiff'].
+        meta_intact (bool, optional): _description_. Defaults to False.
+
     Returns:
-        Tupla de rutas Path guardadas
+        tuple[Path, ...]: _description_
     """
     
     meta_i = meta.copy()
-    meta_i.update(driver='GTiff', dtype='float32', count=1)
 
-    files_2_save = tuple([output_folder / f'{id_name}_({type_name}).{extension}' for extension in extensions])
+    if not meta_intact:
+        meta_i.update(driver='GTiff', dtype='float32', count=1)
+
+    files_2_save = tuple([output_folder / f'{id_name}_({type_name}).{extension}' for extension in extensions]) if isinstance(extensions,list) else tuple([output_folder / f'{id_name}_({type_name}).{extensions}'])
     
     for file in files_2_save:
         if file.suffix=='.png':
@@ -312,7 +314,16 @@ def save_file(array: npt.NDArray, meta: dict, id_name: str, type_name: str, outp
     return files_2_save
 
 def reproject_raster(src_path:str|Path, dst_crs:str = "EPSG:32629")->tuple[np.ndarray, dict]:
+    """_summary_
 
+    Args:
+        src_path (str | Path): _description_
+        dst_crs (_type_, optional): _description_. Defaults to "EPSG:32629".
+
+    Returns:
+        tuple[np.ndarray, dict]: _description_
+
+    """
     with rasterio.open(src_path) as src:
 
         transform, width, height = calculate_default_transform(src.crs, dst_crs, src.width, src.height, *src.bounds)

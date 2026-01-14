@@ -276,7 +276,7 @@ def default_imshow(array: npt.NDArray, title: str, colorbar_params: dict | None 
     
     fig1, ax1 = plt.subplots(**DEFAULT_PLOT['figure'])
     img1 = ax1.imshow(array, **DEFAULT_PLOT['imshow'])
-    fig1.colorbar(img1, ax1, **colorbar_params)
+    fig1.colorbar(img1, ax=ax1, **colorbar_params)
     ax1.set_title(title)
 
     return fig1, ax1

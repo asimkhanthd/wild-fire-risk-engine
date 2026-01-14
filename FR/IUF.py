@@ -2,6 +2,8 @@ import os
 import pandas as pd
 import geopandas as gpd
 import rasterio
+
+from rasterio.transform import from_bounds
 from rasterio.features import rasterize
 from rasterio.mask import mask
 import matplotlib.pyplot as plt
@@ -51,15 +53,16 @@ def wui(input_road, input_clc, output_iuf):
     code = pol2_sel['Code_18'].values
     
     conditions = [
+        code < 300,
         code == 311,
         code == 312,
         code == 313,
         code == 321,
         (code == 322) | (code == 323) | (code == 324),
         code == 333,
-        code < 300
-    ]
-    choices = [2, 5, 4, 2, 3, 2, 1]
+        ]
+    
+    choices = [ 1, 2, 5, 4, 2, 3, 2]
     
     risk_array = np.select(conditions, choices, default=0)
     pol2_sel['risk'] = risk_array
@@ -69,7 +72,7 @@ def wui(input_road, input_clc, output_iuf):
         b = src.bounds
         x_res = int((b.right - b.left)/25)
         y_res = int((b.top - b.bottom)/25)
-        transform = rasterio.transform.from_bounds(b.left, b.bottom, b.right, b.top, x_res, y_res)
+        transform =from_bounds(b.left, b.bottom, b.right, b.top, x_res, y_res)
         crs_str = src.crs.to_string()
     
     # Rasterizar directamente en memoria

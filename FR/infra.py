@@ -6,6 +6,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import rasterio
 
+from setup import *
 from pathlib import Path
 from rasterio.features import rasterize
 from rasterio.transform import from_bounds
@@ -90,25 +91,22 @@ def infrastructure(input_infra:str|Path,
         'compress': 'lzw'
     }
     
-    tif_dir=Path(output_folder)/'INFRASTURCTURE'/'TIFFs'
-    png_dir = Path(output_folder)/'INFRASTURCTURE'/'PNGs'
-
-    tif_dir.mkdir(parents=True, exist_ok=True)
-
-    with rasterio.open(tif_dir/f'{input_infra.stem}_(INFRA Risk_Map).tif', 'w', **meta_info) as dst:
-        dst.write(raster_data, 1)
-
+    tif_dir=Path(output_folder)/'TIFFs'/'INFRASTURCTURE'
+    png_dir = Path(output_folder)/'PNGs'/'INFRASTURCTURE'
     
     # 8. Imagen (opcional)
+    fig1, ax1 = default_imshow(raster_data,'Roads and Railways Risk Map',{'label':'Risk'})
+    fig1.set_size_inches((12,8))
+    
     if export_image:
 
+        tif_dir.mkdir(parents=True, exist_ok=True)
         png_dir.mkdir(parents=True, exist_ok=True)
-        
-        plt.figure(figsize=(12, 8))
-        plt.imshow(raster_data, cmap='Reds')
-        plt.colorbar(label='Risk Level')
-        plt.title('Roads and Railways Risk Map')
-        plt.savefig(png_dir/f'{input_infra.stem}_(INFRA Risk_Map).png', dpi=300, bbox_inches='tight')
+
+        with rasterio.open(tif_dir/f'{input_infra.stem}_(INFRA Risk_Map).tif', 'w', **meta_info) as dst:
+            dst.write(raster_data, 1)
+
+        fig1.savefig(png_dir/f'{input_infra.stem}_(INFRA Risk_Map).png', **DEFAULT_PLOT['save'])
         plt.close()
 
 

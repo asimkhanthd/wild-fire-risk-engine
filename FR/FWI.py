@@ -5,7 +5,7 @@ import numpy.ma as ma
 from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
 import rutinas.FWI_Equations as Fwi
-import tifffile as tif
+# import tifffile as tif
 import rasterio
 from rasterio.transform import from_origin
 
@@ -136,11 +136,12 @@ def f_w_index(folder_nc, output_fwi):
     if guardar_imagen:
 
         fig.savefig(png_path, dpi=300, bbox_inches="tight")
-        print(f"PNG guardado en: {png_path}")
 
         with rasterio.open(tif_path, "w", **meta) as dst:
             dst.write(fwi_clas, 1)
-        print(f"TIF guardado en: {tif_path}")
+        
+        print(f'Historical Burned Areas Layer completed and saved on:\n' \
+              f' - Rasters: {tif_path} \n - PNGs: {png_path}')
 
     print("Fire Weather Index Layer completed.")
 

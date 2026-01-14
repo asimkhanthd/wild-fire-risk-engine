@@ -31,11 +31,48 @@ class ParsedFilename(TypedDict):
     banda: str
     filename: str
 
-def parse_filename(filename:str,date_format:str="%Y-%m-%d-%H_%M")->ParsedFilename:
+def parse_filename(filename: str, date_format: str = "%Y-%m-%d-%H_%M") -> ParsedFilename:
+    """Parsea nombres de archivo con el patrón Sentinel-2.
     
-    """
-    Parsea nombres de archivo con el patrón Sentinel.
-    Ejemplo: '2023-01-01-10_30_2023-01-15-10_30_Sentinel-2_L2A_B02_(Raw'
+    Extrae información temporal, satélite, nivel de procesamiento y banda 
+    de nombres de archivo siguiendo el formato estándar de Sentinel-2.
+    
+    Args:
+        filename: Nombre del archivo a parsear
+        date_format: Formato de las fechas en el nombre (default: "%Y-%m-%d-%H_%M")
+        
+    Returns:
+        ParsedFilename: TypedDict con las siguientes claves:
+            - fecha_inicio: Datetime de inicio de captura
+            - fecha_fin: Datetime de fin de captura
+            - satelite: Nombre del satélite (ej: "Sentinel-2")
+            - nivel: Nivel de procesamiento (ej: "L2A", "L1C")
+            - banda: Banda espectral (ej: "B04", "B08")
+            - filename: Nombre original del archivo
+            
+    Raises:
+        ValueError: Si el nombre no coincide con el patrón esperado
+        
+    Examples:
+        Parsear un archivo Sentinel-2 típico::
+        
+            >>> filename = "2023-01-01-10_30_2023-01-15-10_30_Sentinel-2_L2A_B04_(Raw).tiff"
+            >>> result = parse_filename(filename)
+            >>> result['satelite']
+            'Sentinel-2'
+            >>> result['banda']
+            'B04'
+            >>> result['fecha_inicio']
+            datetime.datetime(2023, 1, 1, 10, 30)
+            
+        Usar formato de fecha personalizado::
+        
+            >>> filename = "20230101_20230115_S2_L2A_B08.tiff"
+            >>> parse_filename(filename, date_format="%Y%m%d")
+            
+    Note:
+        Actualmente solo soporta archivos con patrón Sentinel-2.
+        TODO: Incorporar soporte para otros satélites.
     """
 
     #TODO: Incorporar estructurad de expresion regular para otros satelites

@@ -34,7 +34,7 @@ def GCI(input_folder:str='INPUT',output_folder:str='OUTPUT',export_image:bool=Fa
 
         for gci_i,meta_ref_i,extra_info in zip(gci,info['meta_ref'],info['id']):
     
-            save_file(gci_i,meta_ref_i,extra_info,'TWI',tiff_dir)
+            save_file(gci_i, extra_info, tiff_dir, meta_ref_i, 'TWI')
 
             # Guardar PNGs en carpeta separada
             fig1,ax1=default_imshow(gci_i,'GCI')

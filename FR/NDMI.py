@@ -30,7 +30,7 @@ def Ndmi(input_folder:str='INPUT',output_folder:str="OUTPUT",export_image:bool=F
         # Guardar NDMI como .tiff y .tif (float32)
         for ndm_i,meta_ref_i,extra_info in zip(ndmi,info['meta_ref'],info['id']):
     
-            save_file(ndm_i,meta_ref_i,extra_info,'TWI',tiff_dir)
+            save_file(ndm_i, extra_info, tiff_dir, meta_ref_i, 'TWI')
             plt.figure(figsize=(8,6)); 
             plt.imshow(ndmi, cmap='RdYlGn'); plt.colorbar(); plt.title('NDMI'); plt.tight_layout()
             plt.savefig(png_dir/f'{extra_info}_(NDMI).png', **DEFAULT_PLOT['save']); plt.close()

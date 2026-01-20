@@ -171,8 +171,8 @@ def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),export_image:
         tmeta = target_meta.copy()
         tmeta.update(dtype='float32', count=1)
 
-        base_file,_=save_file(suma_total,tmeta,'Fire_History_Sum',f'{time_range}',rasters_dir)
-        risk_file,_=save_file(reclas,tmeta,'Fire_History_(Risk_Map)',f'{time_range}',rasters_dir)
+        base_file,_=save_file(suma_total,'Fire_History_Sum',rasters_dir,tmeta,f'{time_range}')
+        risk_file,_=save_file(reclas,'Fire_History_(Risk_Map)',rasters_dir,tmeta,f'{time_range}')
 
         cumulative_figure.savefig(png_dir/f'{base_file.stem}.png', **DEFAULT_PLOT['save'])
         reclasified_figure.savefig(png_dir/f'{risk_file.stem}.png', **DEFAULT_PLOT['save'])

@@ -35,7 +35,7 @@ def twi(input_folder:str='INPUT',output_folder:str="OUTPUT",export_image:bool=Fa
 
         for twi_i,meta_ref_i,extra_info in zip(twi,info['meta_ref'],info['id']):
             # print(meta_ref_i)
-            save_file(twi_i,meta_ref_i,extra_info,'TWI',tiff_dir)
+            save_file(twi_i, extra_info, tiff_dir, meta_ref_i, 'TWI')
 
             fig,ax=default_imshow(twi_i,'TWI')
             fig.savefig(png_dir/f'{extra_info}_(TWI).png', **DEFAULT_PLOT['save']); plt.close()

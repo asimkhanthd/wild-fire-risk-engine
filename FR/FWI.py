@@ -44,9 +44,8 @@ def f_w_index(input_folder:str|Path,file_name:str='FWI_Risk_Map',output_folder:P
     lista_nc = [file for file in input_folder.iterdir() if file.suffix == '.nc']
 
     # Inicialización de condiciones previas
-    f0 = p0 = d0 = None
     GRID_SIZE = 360
-    VERTICAL_LEVEL = 15  # Nivel atmosférico a extraer
+    VERTICAL_LEVEL = 15  
 
     for id_file, file in enumerate(lista_nc):
         
@@ -168,10 +167,11 @@ def f_w_index(input_folder:str|Path,file_name:str='FWI_Risk_Map',output_folder:P
 
     if expoort_image:
 
-        fig1.savefig(png_dirs / f'{file_name}.png', dpi=300, bbox_inches="tight")
-
         with rasterio.open(tif_dirs / f'{file_name}.tif', "w", **meta) as dst:
             dst.write(fwi_clas, 1)
+
+        fig1.savefig(png_dirs / f'{file_name}.png', dpi=300, bbox_inches="tight")
+
         
         print(f'Historical Burned Areas Layer completed and saved on:\n' \
               f' - Rasters: {tif_dirs} \n - PNGs: {png_dirs}')

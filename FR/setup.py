@@ -333,7 +333,7 @@ def default_imshow(array: npt.NDArray, title: str, colorbar_params: dict | None 
 
     return fig1, ax1
 
-def save_file(array: npt.NDArray, meta: dict, id_name: str, type_name: str, output_folder: Path, 
+def save_file(array: npt.NDArray, id_name: str, output_folder: Path, meta: dict, type_name: str,
               extensions: list[str]|str =['tif', 'tiff'],meta_intact:bool=False) -> tuple[Path, ...]:
     """_summary_
 
@@ -349,20 +349,24 @@ def save_file(array: npt.NDArray, meta: dict, id_name: str, type_name: str, outp
     Returns:
         tuple[Path, ...]: _description_
     """
-    
-    meta_i = meta.copy()
+    if not meta:
+        meta={}
 
+    meta_i = meta.copy()
     if not meta_intact:
         meta_i.update(driver='GTiff', dtype='float32', count=1)
 
-    files_2_save = tuple([output_folder / f'{id_name}_({type_name}).{extension}' for extension in extensions]) if isinstance(extensions,list) else tuple([output_folder / f'{id_name}_({type_name}).{extensions}'])
+    files_2_save = tuple([output_folder / f'{extension.upper()}s' /f'{id_name}_({type_name}).{extension}' for extension in extensions]) if isinstance(extensions,list) else tuple([output_folder / f'{id_name}_({type_name}).{extensions}'])
     
     for file in files_2_save:
+
         if file.suffix=='.png':
             pass
 
-        with rasterio.open(file, 'w', **meta_i) as dst:
-            dst.write(array.astype('float32'), 1)
+        else:
+
+            with rasterio.open(file, 'w', **meta_i) as dst:
+                dst.write(array.astype('float32'), 1)
 
     return files_2_save
 

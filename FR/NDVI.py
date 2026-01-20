@@ -46,7 +46,7 @@ def Ndvi(input_folder:str='INPUT',output_folder:str='OUTPUT',export_image:bool=F
         
         for ndvi_i,meta_ref_i,extra_info in zip(ndvi,info['meta_ref'],info['id']): 
 
-            save_file(ndvi_i,meta_ref_i,extra_info,'NDVI',tiff_dir)
+            save_file(ndvi_i, extra_info, tiff_dir, meta_ref_i, 'NDVI')
             plt.figure(figsize=(8,6))
             plt.imshow(ndvi, cmap='RdYlGn'); plt.colorbar(); plt.title('NDVI'); plt.tight_layout()
             plt.savefig(png_dir/f'{extra_info}_(NDVI).png', **DEFAULT_PLOT['save']); plt.close()
@@ -54,7 +54,7 @@ def Ndvi(input_folder:str='INPUT',output_folder:str='OUTPUT',export_image:bool=F
 
         for reclasificado_i,meta_ref_i,extra_info in zip(reclasificados,info['meta_ref'],info['id']):
 
-            save_file(reclasificado_i,meta_ref_i,extra_info,'NDVI_Risk_Map',tiff_dir)
+            save_file(reclasificado_i, extra_info, tiff_dir, meta_ref_i, 'NDVI_Risk_Map')
             plt.figure(figsize=(8,6)) 
             plt.imshow(reclasificado_i, cmap='Reds'); plt.colorbar(); plt.title('NDVI Risk Map'); plt.tight_layout()
             plt.savefig(png_dir/f'{extra_info}_(NDVI_Risk_Map).png', **DEFAULT_PLOT['save']); plt.close()

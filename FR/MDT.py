@@ -1,13 +1,18 @@
-from osgeo import gdal
 import os
-import numpy as np
 import rasterio
+
+import numpy as np
 import matplotlib.pyplot as plt
+
+from setup import *
+from osgeo import gdal
 from pathlib import Path
 
-def mdt(ruta_mdt, ruta_slope, ruta_aspect, 
+def mdt(ruta_mdt, 
         salida_mdt, salida_slope, salida_aspect, show_plots=True):
     
+    # XXX: Hay dos parametros de salida que no se usan: ruta_slope, ruta_aspect
+
     output_folder=Path('OUTPUT')
     export_image=False
     print('MDT, SLOPE and ASPECT Layers processing...')
@@ -33,6 +38,7 @@ def mdt(ruta_mdt, ruta_slope, ruta_aspect,
     aspect_ds = gdal.DEMProcessing('/vsimem/aspect_tmp.tif', ds, 'aspect', format='MEM')
     slope = slope_ds.ReadAsArray().astype('float32')
     aspect = aspect_ds.ReadAsArray().astype('float32')
+
     slope_ds = aspect_ds = ds = None  # close datasets
     aspect = np.where(aspect < 0, 360 + aspect, aspect)
     print("Slope y Aspect calculados.")
@@ -67,33 +73,45 @@ def mdt(ruta_mdt, ruta_slope, ruta_aspect,
     mdt_bins = [0, 200, 400, 600, 800]
     mdt_classes = np.array([0, 5, 4, 3, 2, 1], dtype='int32')
     mdt_re = mdt_classes[np.digitize(mdt, mdt_bins, right=True)]
+
+    fig_mdt, ax_mdt = default_imshow(mdt_re, 'MDT Risk Map', {'label':'Risk'})
+
     print("MDT reclasificado completado.")
-    save_and_plot(mdt_re, salida_mdt, 'MDT Risk Map')
 
     print("Reclasificando Slope...")
     slope_bins = [5, 15, 25, 35]
     slope_classes = np.array([1, 2, 3, 4, 5], dtype='int32')
     slope_re = slope_classes[np.digitize(slope, slope_bins, right=True)]
+    fig_slpe, ax_slope = default_imshow(slope_re, 'Slope Risk Map', {'label':'Risk'})
     print("Slope reclasificado completado.")
-    save_and_plot(slope_re, salida_slope, 'Slope Risk Map')
 
     print("Reclasificando Aspect...")
-    aspect_re = np.select(
-        [
-            (aspect >= 0) & (aspect < 45) | (aspect == 360),
-            (aspect >= 45) & (aspect < 90),
-            (aspect >= 90) & (aspect < 135),
-            (aspect >= 135) & (aspect < 180),
-            (aspect >= 180) & (aspect < 225),
-            (aspect >= 225) & (aspect < 270),
-            (aspect >= 270) & (aspect < 315),
-            (aspect >= 315) & (aspect < 360),
-        ],
-        [1, 2, 3, 4, 5, 5, 3, 2],
-        default=0,
-    ).astype('int32')
+
+    conditions= [(aspect >= 0) & (aspect < 45) | (aspect == 360),
+                 (aspect >= 45) & (aspect < 90),
+                 (aspect >= 90) & (aspect < 135),
+                 (aspect >= 135) & (aspect < 180),
+                 (aspect >= 180) & (aspect < 225),
+                 (aspect >= 225) & (aspect < 270),
+                 (aspect >= 270) & (aspect < 315),
+                 (aspect >= 315) & (aspect < 360),
+    ]
+    #XXX: La secuencia de choices es correcta?
+    choices= [1, 2, 3, 4, 5, 5, 3, 2]
+    aspect_re = np.select(conditions,choices,default=0,).astype('int32')
+    fig_aspect, ax_aspect = default_imshow(aspect_re, 'Aspect Risk Map', {'label':'Risk'})
     print("Aspect reclasificado completado.")
+
+    if export_image:
+        # save_file(fig_mdt,)
+        pass
+
+
+
+    save_and_plot(mdt_re, salida_mdt, 'MDT Risk Map')
+    save_and_plot(slope_re, salida_slope, 'Slope Risk Map')
     save_and_plot(aspect_re, salida_aspect, 'Aspect Risk Map')
+
 
     print("MDT, SLOPE and ASPECT Layers completed.")
     return

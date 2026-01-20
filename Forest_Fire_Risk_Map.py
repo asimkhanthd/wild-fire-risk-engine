@@ -25,8 +25,6 @@ from FR.ahp import normalize_matrix, calculate_weights, consistency_ratio
 
 # Rutas de entrada (comentadas: descomentar para ejecutar cada función individualmente)
 #Mdt.mdt(r'C:\Users\Mateo G\Desktop\STORCITO\Fotos\DTM\DTM.tif',
-#        r'C:\Users\Mateo G\Desktop\STORCITO\Fotos\DTM\SLOPE.tif',
-#        r'C:\Users\Mateo G\Desktop\STORCITO\Fotos\DTM\ASPECT.tif',
 #        r'C:\Users\Mateo G\Desktop\STORCITO\Salida Datos\MDT\MDT.tif',
 #        r'C:\Users\Mateo G\Desktop\STORCITO\Salida Datos\MDT\SLOPE.tif',
 #        r'C:\Users\Mateo G\Desktop\STORCITO\Salida Datos\MDT\ASPECT.tif')

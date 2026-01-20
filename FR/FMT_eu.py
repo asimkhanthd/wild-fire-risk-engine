@@ -33,12 +33,10 @@ def fmt(archivo_lectura:str|Path,output_folder=Path('OUTPUT') ,file_name:str='FM
     if isinstance(archivo_lectura,str):
         archivo_lectura=Path(archivo_lectura)
 
-    # Leer datos una sola vez
     with rasterio.open(archivo_lectura) as src:
         fmt_eu = src.read(1).astype('float32')
         meta = src.meta.copy()
 
-    # Aplicar conversiones directamente en memoria
     fmt_rothermel = np.zeros_like(fmt_eu, dtype='int32')
     for key, value in ROTHERMEL_MAP.items():
         fmt_rothermel[fmt_eu == key] = value
@@ -47,37 +45,22 @@ def fmt(archivo_lectura:str|Path,output_folder=Path('OUTPUT') ,file_name:str='FM
     for key, value in FINAL_MAP.items():
         fmt_final[fmt_rothermel == key] = value
 
-    # Directorios para guardar archivos
-    rasters_dir =output_folder/'TIFFs'/'FMT'
-    png_dir =output_folder/'PNGs'/'FMT'
     
     fig1,ax1 = default_imshow(fmt_final,'Fuel Model Type Risk Map')
 
     if export_image:
 
-        rasters_dir.mkdir(exist_ok=True,parents=True)
-        png_dir.mkdir(exist_ok=True,parents=True)
-
         meta.update(dtype='int32', nodata=-9999, count=1, driver='GTiff')
-        
-        raster_path = rasters_dir/f'{file_name}.tif'
-        with rasterio.open(raster_path, 'w', **meta) as dst:
+        save_file(fmt_final, file_name, output_folder, meta, extensions=['tif','png'], fig=fig1,meta_intact=True)
+
+
+    
+    # Guardar también en ruta_salida para compatibilidad
+    try:
+        meta.update(dtype='int32', nodata=-9999, count=1, driver='GTiff')
+        with rasterio.open(ruta_salida, 'w', **meta) as dst:
             dst.write(fmt_final, 1)
-    
-        png_path = png_dir/f'{file_name}.png'
-        fig1.savefig(png_path, **DEFAULT_PLOT['save'])
-        # plt.close()
-
-        print(f'Historical Burned Areas Layer completed and saved on:\n' \
-        f' - Rasters: {rasters_dir} \n - PNGs: {png_dir}')
-
-    
-    # # Guardar también en ruta_salida para compatibilidad
-    # try:
-    #     meta.update(dtype='int32', nodata=-9999, count=1, driver='GTiff')
-    #     with rasterio.open(ruta_salida, 'w', **meta) as dst:
-    #         dst.write(fmt_final, 1)
-    # except Exception:
-    #     pass
+    except Exception:
+        pass
 
     return fmt_final

@@ -19,7 +19,6 @@ def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),export_image:
 
     reference_folder=Path('REFERENCE')/'HIST'
 
-
     sort_time_comparative(input_folder)
 
     prev_folder=input_folder/'PRE_FIRE'
@@ -158,12 +157,6 @@ def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),export_image:
     # Guardar si el usuario lo solicita
     if export_image:
 
-        rasters_dir = output_folder/'TIFFs'/'HIST'
-        png_dir = output_folder/'PNGs'/'HIST'
-
-        rasters_dir.mkdir(parents=True, exist_ok=True)
-        png_dir.mkdir(parents=True, exist_ok=True)
-        
         if not target_meta:
             return
 
@@ -171,21 +164,9 @@ def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),export_image:
         tmeta = target_meta.copy()
         tmeta.update(dtype='float32', count=1)
 
-        base_file,_=save_file(suma_total,'Fire_History_Sum',rasters_dir,tmeta,f'{time_range}')
-        risk_file,_=save_file(reclas,'Fire_History_(Risk_Map)',rasters_dir,tmeta,f'{time_range}')
+        save_file(suma_total,'Fire_History_Sum',output_folder,tmeta,f'{time_range}',extensions=['tif','tiff','png'],fig=cumulative_figure)
+        save_file(reclas,'Fire_History_(Risk_Map)',output_folder,tmeta,f'{time_range}',extensions=['tif','tiff','png'],fig=reclasified_figure)
 
-        cumulative_figure.savefig(png_dir/f'{base_file.stem}.png', **DEFAULT_PLOT['save'])
-        reclasified_figure.savefig(png_dir/f'{risk_file.stem}.png', **DEFAULT_PLOT['save'])
-
-        # Guardar también en output_fhist para compatibilidad
-        # try:
-        #     with rasterio.open(output_fhist, 'w', **tmeta) as dst:
-        #         dst.write(reclas, 1)
-        # except Exception:
-        #     pass
-
-        print(f'Historical Burned Areas Layer completed and saved on:\n' \
-        f' - Rasters: {rasters_dir} \n - PNGs: {png_dir}')
 
 
 if __name__ == "__main__":

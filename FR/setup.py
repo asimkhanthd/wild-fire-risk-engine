@@ -333,8 +333,8 @@ def default_imshow(array: npt.NDArray, title: str, colorbar_params: dict | None 
 
     return fig1, ax1
 
-def save_file(array: npt.NDArray, id_name: str, output_folder: Path, meta: dict, type_name: str,
-              extensions: list[str]|str =['tif', 'tiff'],meta_intact:bool=False) -> tuple[Path, ...]:
+def save_file(array: npt.NDArray, id_name: str, output_folder: Path, meta: dict, type_name: str|None = None,
+              extensions: list[str]|str =['tif', 'tiff'],meta_intact:bool=False,fig:Figure|None=None) -> tuple[Path, ...]:
     """_summary_
 
     Args:
@@ -355,13 +355,18 @@ def save_file(array: npt.NDArray, id_name: str, output_folder: Path, meta: dict,
     meta_i = meta.copy()
     if not meta_intact:
         meta_i.update(driver='GTiff', dtype='float32', count=1)
+    
+    file_name=f'{id_name}_({type_name})' if type_name else f'{id_name}'
 
-    files_2_save = tuple([output_folder / f'{extension.upper()}s' /f'{id_name}_({type_name}).{extension}' for extension in extensions]) if isinstance(extensions,list) else tuple([output_folder / f'{id_name}_({type_name}).{extensions}'])
+    files_2_save = tuple([output_folder / f'{extension.upper()}s' /f'{file_name}.{extension}' for extension in extensions]) if isinstance(extensions,list) else tuple([output_folder / f'{extensions.upper()}s' /f'{file_name}.{extensions}'])
     
     for file in files_2_save:
 
         if file.suffix=='.png':
-            pass
+            if not fig:
+                raise ValueError("Figure must be provided to save PNG files.")
+
+            fig.savefig(file, **DEFAULT_PLOT['save']); plt.close()
 
         else:
 

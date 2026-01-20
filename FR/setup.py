@@ -270,13 +270,13 @@ def check_valid_entries(bands: list[str], input_folder: str = "INPUT",satellite:
     return complete_entries, incomplete_entries
 
 def read_and_group(valids:list[dict]):
-    """_summary_
+    """Group bands from valid file entries.
 
     Args:
-        valids (list[dict]): _description_
+        valids (list[dict]): List of valid file entry dictionaries
 
     Returns:
-        _type_: _description_
+        dict: Dictionary grouped by band with keys: 'meta_ref', 'id', and band names
     """
 
     entry_arrays_tiffs={}
@@ -307,7 +307,7 @@ def read_and_group(valids:list[dict]):
         entry_arrays_tiffs[id]=bands
         good_dict['id'].append(id)
 
-    return entry_arrays_tiffs,meta_ref,good_dict
+    return good_dict
 
 def default_imshow(array: npt.NDArray, title: str, colorbar_params: dict | None = None) -> tuple[Figure, Axes]:
     """Muestra un array como imagen con colorbar y configuración por defecto.
@@ -333,7 +333,7 @@ def default_imshow(array: npt.NDArray, title: str, colorbar_params: dict | None 
 
     return fig1, ax1
 
-def save_file(array: npt.NDArray, id_name: str, output_folder: Path, meta: dict, type_name: str|None = None,
+def save_file(array: npt.NDArray, id_name: str, output_folder: Path|str, meta: dict, type_name: str|None = None,
               extensions: list[str]|str =['tif', 'tiff'],meta_intact:bool=False,fig:Figure|None=None) -> tuple[Path, ...]:
     """_summary_
 
@@ -349,6 +349,8 @@ def save_file(array: npt.NDArray, id_name: str, output_folder: Path, meta: dict,
     Returns:
         tuple[Path, ...]: _description_
     """
+    if isinstance(output_folder, str):
+        output_folder = Path(output_folder)
     if not meta:
         meta={}
 

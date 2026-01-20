@@ -17,7 +17,7 @@ def GCI(input_folder:str='INPUT',output_folder:str='OUTPUT',export_image:bool=Fa
 
     valids,_=check_valid_entries(["B03","B08"],input_folder=input_folder)
     
-    _,_,info=read_and_group(valids)
+    info=read_and_group(valids)
    
     np.seterr(divide='ignore', invalid='ignore')
 
@@ -34,14 +34,8 @@ def GCI(input_folder:str='INPUT',output_folder:str='OUTPUT',export_image:bool=Fa
 
         for gci_i,meta_ref_i,extra_info in zip(gci,info['meta_ref'],info['id']):
     
-            save_file(gci_i, extra_info, tiff_dir, meta_ref_i, 'TWI')
-
-            # Guardar PNGs en carpeta separada
             fig1,ax1=default_imshow(gci_i,'GCI')
-            
-            fig1.savefig(png_dir/f'{extra_info}_(GCI).png', **DEFAULT_PLOT['save']); plt.close()
-
-        print(f"Imágenes guardadas en:\n - Rasters: {tiff_dir}\n - PNGs: {png_dir}")
+            save_file(gci_i, extra_info, output_folder, meta_ref_i, 'TWI',extensions=['tif','tiff','png'], fig=fig1)
 
 
 if __name__ == "__main__":

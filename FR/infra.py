@@ -126,25 +126,15 @@ def infrastructure(input_infra: str|Path,
         'compress': 'lzw'
     }
     
-    tif_dir = Path(output_folder) / 'TIFFs' / 'INFRASTRUCTURE'
-    png_dir = Path(output_folder) / 'PNGs' / 'INFRASTRUCTURE'
-    
+
     # Visualizar resultado
     fig1, ax1 = default_imshow(raster_data, 'Roads and Railways Risk Map', {'label': 'Risk'})
     fig1.set_size_inches((12, 8))
     
     # Guardar archivos si se solicita
     if export_image:
-        tif_dir.mkdir(parents=True, exist_ok=True)
-        png_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Guardar como GeoTIFF
-        with rasterio.open(tif_dir / f'{input_infra.stem}_(INFRA Risk_Map).tif', 'w', **meta_info) as dst:
-            dst.write(raster_data, 1)
-        
-        # Guardar como PNG
-        fig1.savefig(png_dir / f'{input_infra.stem}_(INFRA Risk_Map).png', **DEFAULT_PLOT['save'])
-        plt.close()
+
+        save_file(raster_data, input_infra.stem, output_folder, meta_info, 'INFRA Risk_Map',extensions=['tif','png'] ,fig=fig1, meta_intact=True)
     
     return raster_data
 

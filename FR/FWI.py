@@ -158,24 +158,12 @@ def f_w_index(input_folder:str|Path,file_name:str='FWI_Risk_Map',output_folder:P
 
     fig1,ax1=default_imshow(fwi_clas,'Fire Weather Index Risk Map',{'label':'Risk'})
 
-    # Mostrar figura
     plt.show()
-
-    # --------------------------------------------------------
-    # GUARDADO FINAL SI EL USUARIO DIJO “Y”
-    # --------------------------------------------------------
 
     if expoort_image:
 
-        with rasterio.open(tif_dirs / f'{file_name}.tif', "w", **meta) as dst:
-            dst.write(fwi_clas, 1)
-
-        fig1.savefig(png_dirs / f'{file_name}.png', dpi=300, bbox_inches="tight")
-
-        
-        print(f'Historical Burned Areas Layer completed and saved on:\n' \
-              f' - Rasters: {tif_dirs} \n - PNGs: {png_dirs}')
+        save_file(fwi_clas, file_name, output_folder, meta, extensions=['tif','png'], fig=fig1, meta_intact=True)
 
     print("Fire Weather Index Layer completed.")
 
-    return
+    return fwi_clas

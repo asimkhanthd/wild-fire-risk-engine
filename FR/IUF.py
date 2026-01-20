@@ -104,26 +104,13 @@ def wui(input_road, input_clc, file_name:str='IUF_Risk_Map',
             out_meta = mem_src.meta.copy()
             out_meta.update({"driver":"GTiff", "height":out_img.shape[1], "width":out_img.shape[2], "transform":out_tr})
     
-    # Preparar directorios
-    rasters_dir = output_folder/'TIFFs'/'IUF'
-    png_dir = output_folder/'PNGs'/'IUF'
 
-    rasters_dir.mkdir(parents=True, exist_ok=True) 
-    png_dir.mkdir(parents=True, exist_ok=True)
-    
-    raster_path = rasters_dir/f'{file_name}.tif'
-    png_path = png_dir/f'{file_name}.png'
-    
 
     fig1,ax1=default_imshow(out_img[0],'WUI Risk Map',{'label':'Risk'})
     
     if export_image:
-        
-        with rasterio.open(raster_path, 'w', **out_meta) as dst:
-            dst.write(out_img)
 
-        fig1.savefig(png_path, **DEFAULT_PLOT['save'])
-        print(f'WUI Layer completed and saved. TIFF: {raster_path}; PNG: {png_path}')
+        save_file(out_img, file_name, output_folder, out_meta,extensions=['tif','png'], fig=fig1, meta_intact=True)
     
-    plt.show()
-    return
+    return out_img
+        

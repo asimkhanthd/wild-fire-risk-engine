@@ -53,14 +53,4 @@ def fmt(archivo_lectura:str|Path,output_folder=Path('OUTPUT') ,file_name:str='FM
         meta.update(dtype='int32', nodata=-9999, count=1, driver='GTiff')
         save_file(fmt_final, file_name, output_folder, meta, extensions=['tif','png'], fig=fig1,meta_intact=True)
 
-
-    
-    # Guardar también en ruta_salida para compatibilidad
-    try:
-        meta.update(dtype='int32', nodata=-9999, count=1, driver='GTiff')
-        with rasterio.open(ruta_salida, 'w', **meta) as dst:
-            dst.write(fmt_final, 1)
-    except Exception:
-        pass
-
     return fmt_final

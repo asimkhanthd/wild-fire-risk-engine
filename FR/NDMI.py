@@ -11,7 +11,7 @@ def Ndmi(input_folder:str='INPUT',output_folder:str="OUTPUT",export_image:bool=F
 
     valids,_=check_valid_entries(["B08","B11"],input_folder=input_folder)
 
-    _,_,info=read_and_group(valids)
+    info=read_and_group(valids)
 
     np.seterr(divide='ignore', invalid='ignore')
 

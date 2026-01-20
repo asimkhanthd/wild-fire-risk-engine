@@ -18,7 +18,7 @@ def Ndvi(input_folder:str='INPUT',output_folder:str='OUTPUT',export_image:bool=F
 
     valids,_=check_valid_entries(bandas_requeridas,input_folder=input_folder)
   
-    _,_,info=read_and_group(valids)
+    info=read_and_group(valids)
       
     np.seterr(divide='ignore', invalid='ignore')
 

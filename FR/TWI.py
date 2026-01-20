@@ -17,7 +17,7 @@ def twi(input_folder:str='INPUT',output_folder:str="OUTPUT",export_image:bool=Fa
     """
     valids,_=check_valid_entries(["B01","B03","B05","B06","B08","B12"],input_folder=input_folder)
 
-    _,_,info=read_and_group(valids)
+    info=read_and_group(valids)
       
     np.seterr(divide='ignore', invalid='ignore')        
 

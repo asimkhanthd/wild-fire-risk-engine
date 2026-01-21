@@ -15,27 +15,38 @@ from rasterio.io import MemoryFile
 BUFFER_SIZE=660
 BURNED_THRESHOLD=0.27
 
-def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),export_image:bool=False)->None:
-
-    reference_folder=Path('REFERENCE')/'HIST'
-
+def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'), 
+          export_image: bool=False) -> None:
+    
+    reference_folder = Path('REFERENCE') / 'HIST'
     sort_time_comparative(input_folder)
-
-    prev_folder=input_folder/'PRE_FIRE'
-    post_folder=input_folder/'POST_FIRE'
-
+    
+    prev_folder = input_folder / 'PRE_FIRE'
+    post_folder = input_folder / 'POST_FIRE'
     prev_folder.mkdir(parents=True, exist_ok=True)
     post_folder.mkdir(parents=True, exist_ok=True)
-
-
-    prev_files=[file.name for file in prev_folder.iterdir() if file.is_file() and file.suffix=='.tiff']
-    post_files=[file.name for file in post_folder.iterdir() if file.is_file() and file.suffix=='.tiff']
-
-    prev_files=sorted(prev_files,key=band_date_sort)
-    post_files=sorted(post_files,key=band_date_sort)
-
-    prev_files_dict={k:list(v) for k,v in groupby(prev_files,key=lambda x: parse_filename(x)['banda'])}
-    post_files_dict={k:list(v) for k,v in groupby(post_files,key=lambda x: parse_filename(x)['banda'])}
+    
+    # Cargar archivos
+    prev_files = sorted(
+        [f.name for f in prev_folder.glob('*.tiff') if f.is_file()],
+        key=band_date_sort
+    )
+    post_files = sorted(
+        [f.name for f in post_folder.glob('*.tiff') if f.is_file()],
+        key=band_date_sort
+    )
+    
+    # ✅ CACHE: Parse una sola vez
+    prev_cache = {f: parse_filename(f) for f in prev_files}
+    post_cache = {f: parse_filename(f) for f in post_files}
+    
+    # Agrupar usando cache (sin re-parsing)
+    prev_by_band = {
+        k: list(v) for k, v in groupby(prev_files, key=lambda x: prev_cache[x]['banda'])
+    }
+    post_by_band = {
+        k: list(v) for k, v in groupby(post_files, key=lambda x: post_cache[x]['banda'])
+    }
     # print(prev_files_dict)
 
     def _calculate_nbr(nir: np.ndarray, swir: np.ndarray) -> np.ndarray:
@@ -101,7 +112,7 @@ def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),export_image:
     suma_total = None
     target_meta = None
 
-    for pre_b8, pre_b12, post_b8, post_b12 in zip(prev_files_dict['B8A'], prev_files_dict['B12'],post_files_dict['B8A'], post_files_dict['B12']):
+    for pre_b8, pre_b12, post_b8, post_b12 in zip(prev_by_band['B8A'], prev_by_band['B12'],post_by_band['B8A'], post_by_band['B12']):
         
         out_image, out_transform, meta = calcular_dnbr(pre_b8, pre_b12, post_b8, post_b12)
         

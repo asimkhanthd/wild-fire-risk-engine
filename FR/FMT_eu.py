@@ -28,22 +28,53 @@ FINAL_MAP = {
     12: 4, 13: 5,
 }
 
-def fmt(archivo_lectura:str|Path,output_folder=Path('OUTPUT') ,file_name:str='FMT',export_image:bool=False):
+def fmt(input_file:str|Path,output_folder=Path('OUTPUT') ,file_name:str='FMT',
+        export_image:bool=False) -> np.ndarray:
+    
+    """Calculates Fuel Model Type (FMT) remapping with two classification levels.
+        
+    Remaps European FMT codes to Rothermel fuel model types and then to final
+    risk categories using lookup tables.
+        
+    Args:
+        input_file: Path to European FMT raster file
+        output_folder: Output folder path for saving results. Defaults to 'OUTPUT'
+        id_name: Identifier for output files. Defaults to 'FMT'
+        export_image: Whether to save figure and GeoTIFF/PNG files. Defaults to False
+        
+    Returns:
+        Remapped array classified into final FMT risk categories (int32)
+        
+    Raises:
+        FileNotFoundError: If input_file does not exist
+    """
+    input_file = Path(input_file)
 
-    if isinstance(archivo_lectura,str):
-        archivo_lectura=Path(archivo_lectura)
+    if not input_file.exists():
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+        
 
-    with rasterio.open(archivo_lectura) as src:
+    with rasterio.open(input_file) as src:
         fmt_eu = src.read(1).astype('float32')
         meta = src.meta.copy()
 
-    fmt_rothermel = np.zeros_like(fmt_eu, dtype='int32')
-    for key, value in ROTHERMEL_MAP.items():
-        fmt_rothermel[fmt_eu == key] = value
-
-    fmt_final = np.zeros_like(fmt_rothermel, dtype='int32')
-    for key, value in FINAL_MAP.items():
-        fmt_final[fmt_rothermel == key] = value
+    fmt_rothermel = np.select(
+        [fmt_eu == k for k in ROTHERMEL_MAP.keys()],
+        list(ROTHERMEL_MAP.values()),
+        default=0
+    ).astype('int32')
+    
+    fmt_final = np.select(
+        [fmt_rothermel == k for k in FINAL_MAP.keys()],
+        list(FINAL_MAP.values()),
+        default=0
+    ).astype('int32')
+    
+    # unmapped data 
+    unmapped = np.sum(~np.isin(fmt_eu, list(ROTHERMEL_MAP.keys())))
+    if unmapped > 0:
+        print(f"{unmapped} pixels unmapped in ROTHERMEL_MAP")
+    
 
     
     fig1,ax1 = default_imshow(fmt_final,'Fuel Model Type Risk Map')

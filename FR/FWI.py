@@ -16,10 +16,8 @@ from scipy.interpolate import griddata
 def f_w_index(input_folder:str|Path,file_name:str='FWI_Risk_Map',output_folder:Path|str=Path('OUTPUT'),
     expoort_image:bool=False,crs:str="EPSG:4326")->None:
 
-    if isinstance(input_folder,str):
-        input_folder=Path(input_folder)
-    if isinstance(output_folder,str):
-        output_folder=Path(output_folder)
+    input_folder = Path(input_folder)
+    output_folder = Path(output_folder)
 
 
 

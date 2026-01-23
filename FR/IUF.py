@@ -16,7 +16,8 @@ from rasterio.mask import mask
 def wui(input_road, input_clc, file_name:str='IUF_Risk_Map',
         output_folder:Path=Path('OUTPUT'),
         reference_file=Path('REFERENCE')/'MDT'/'DEM_NationalScenario_2013.tif', 
-        export_image = False)->None:
+        export_image:bool = False,
+        show_plots:bool = False)->None:
     
     """_summary_
 
@@ -27,6 +28,7 @@ def wui(input_road, input_clc, file_name:str='IUF_Risk_Map',
         output_folder (Path, optional): _description_. Defaults to Path('OUTPUT').
         reference_file (_type_, optional): _description_. Defaults to Path('REFERENCE')/'MDT'/'DEM_NationalScenario_2013.tif'.
         export_image (bool, optional): _description_. Defaults to False.
+        show_plots (bool, optional): _description_. Defaults to False.
     """
     
     print('Wildland-Urban Interfaces layer processing...')
@@ -107,6 +109,9 @@ def wui(input_road, input_clc, file_name:str='IUF_Risk_Map',
 
 
     fig1,ax1=default_imshow(out_img[0],'WUI Risk Map',{'label':'Risk'})
+    
+    if show_plots:
+        plt.show()
     
     if export_image:
 

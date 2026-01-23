@@ -15,9 +15,25 @@ from rasterio.io import MemoryFile
 BUFFER_SIZE=660
 BURNED_THRESHOLD=0.27
 
-def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'), 
-          export_image: bool=False) -> None:
-    
+def Fhist(input_folder:str|Path=Path('INPUT'), output_folder:str|Path = Path('OUTPUT'),export_image: bool=False,show_plots:bool=False) -> tuple[np.ndarray, np.ndarray]:
+    """_summary_
+
+    Args:
+        input_folder (str | Path, optional): _description_. Defaults to Path('INPUT').
+        output_folder (str | Path, optional): _description_. Defaults to Path('OUTPUT').
+        export_image (bool, optional): _description_. Defaults to False.
+        show_plots (bool, optional): _description_. Defaults to False.
+
+    Raises:
+        ValueError: _description_
+        ValueError: _description_
+
+    Returns:
+        tuple[np.ndarray, np.ndarray]: _description_
+    """
+    input_folder = Path(input_folder)
+    output_folder = Path(output_folder)
+
     reference_folder = Path('REFERENCE') / 'HIST'
     sort_time_comparative(input_folder)
     
@@ -42,20 +58,37 @@ def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),
     
     # Agrupar usando cache (sin re-parsing)
     prev_by_band = {
-        k: list(v) for k, v in groupby(prev_files, key=lambda x: prev_cache[x]['banda'])
+        k: list(v) for k, v in groupby(prev_files, key=lambda x: prev_cache[x].banda)
     }
     post_by_band = {
-        k: list(v) for k, v in groupby(post_files, key=lambda x: post_cache[x]['banda'])
+        k: list(v) for k, v in groupby(post_files, key=lambda x: post_cache[x].banda)
     }
     # print(prev_files_dict)
 
     def _calculate_nbr(nir: np.ndarray, swir: np.ndarray) -> np.ndarray:
-        """Calcula el Normalized Burn Ratio (NBR) de forma segura."""
+        """_summary_
+
+        Args:
+            nir (np.ndarray): _description_
+            swir (np.ndarray): _description_
+
+        Returns:
+            np.ndarray: _description_
+        """
         np.seterr(divide='ignore', invalid='ignore')
         return (nir - swir) / (nir + swir)
     
     def _apply_mask_to_raster(raster: np.ndarray, meta: dict, geometries: list) -> tuple[np.ndarray, rasterio.Affine]:
-        """Aplica máscara shapefile al raster usando MemoryFile."""
+        """_summary_
+
+        Args:
+            raster (np.ndarray): _description_
+            meta (dict): _description_
+            geometries (list): _description_
+
+        Returns:
+            tuple[np.ndarray, rasterio.Affine]: _description_
+        """
         with MemoryFile() as memfile:
             with memfile.open(driver='GTiff', height=raster.shape[0], width=raster.shape[1], count=1,
                             dtype=raster.dtype, crs=meta['crs'], transform=meta['transform']) as mem_src:
@@ -65,7 +98,14 @@ def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),
         return out_image, out_transform
     
     def _load_reference_geometries(year: int) -> list:
-        """Carga y procesa geometrías de referencia con buffer de 660m."""
+        """_summary_
+
+        Args:
+            year (int): _description_
+
+        Returns:
+            list: _description_
+        """
         historico = gpd.read_file(reference_folder/f'hist_{year}.shp')
         buff = historico.geometry.buffer(BUFFER_SIZE)
         buff_gdf = gpd.GeoDataFrame({'geometry': buff}, crs=historico.crs)
@@ -154,15 +194,16 @@ def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),
         reclas = np.digitize(suma_total, bins=bins).astype('int32')
 
 
-    time_range = f"{parse_filename(prev_files[0])['fecha_inicio'].year}-{parse_filename(post_files[-1])['fecha_fin'].year}"
+    time_range = f"{parse_filename(prev_files[0]).fecha_inicio.year}-{parse_filename(post_files[-1]).fecha_fin.year}"
 
     # Mostrar imágenes desde datos en memoria
     cumulative_figure, ax1 = default_imshow(suma_total,f'Historical Burned Sum ({time_range})')
-    plt.show()
 
     reclasified_figure, ax2 = default_imshow(reclas,f'Historical Burned Areas Risk Map ({time_range})',
                                              colorbar_params={'ticks':[1,2,3,4,5], 'label':'Risk'})
-    plt.show()
+    
+    if show_plots:
+        plt.show()
 
     # Guardar si el usuario lo solicita
     if export_image:
@@ -176,6 +217,8 @@ def Fhist(input_folder=Path('INPUT'), output_folder=Path('OUTPUT'),
 
         save_file(suma_total,'Fire_History_Sum',output_folder,tmeta,f'{time_range}',extensions=['tif','tiff','png'],fig=cumulative_figure)
         save_file(reclas,'Fire_History_(Risk_Map)',output_folder,tmeta,f'{time_range}',extensions=['tif','tiff','png'],fig=reclasified_figure)
+
+    return suma_total, reclas
 
 
 

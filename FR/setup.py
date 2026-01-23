@@ -32,13 +32,18 @@ class SceneEntry:
     nivel: str
     archivos: dict[str, Path]
 
-class ParsedFilename(TypedDict):
+@dataclass
+class ParsedFilename:
     fecha_inicio: datetime
     fecha_fin: datetime
     satelite: str
     nivel: str
     banda: str
     filename: str
+
+    @property
+    def id(self) -> str:
+        return f"{self.fecha_inicio.strftime('%Y%m%d%H%M')}_{self.fecha_fin.strftime('%Y%m%d%H%M')}_{self.satelite}_{self.nivel}"
 
 def parse_filename(filename: str, date_format: str = "%Y-%m-%d-%H_%M") -> ParsedFilename:
     """Parsea nombres de archivo con el patrón Sentinel-2.
@@ -109,6 +114,17 @@ def parse_filename(filename: str, date_format: str = "%Y-%m-%d-%H_%M") -> Parsed
         raise ValueError(f"Filename '{filename}' does not match the expected pattern.")
 
 def get_output_folder(input_folder:str):
+    """_summary_
+
+    Args:
+        input_folder (str): _description_
+
+    Raises:
+        ValueError: _description_
+
+    Returns:
+        _type_: _description_
+    """
     if not os.path.isdir(input_folder):
         raise ValueError(f"The provided path '{input_folder}' is not a valid directory.")
     
@@ -125,6 +141,17 @@ def get_output_folder(input_folder:str):
     return output_folder
 
 def band_date_sort(file:str):
+    """_summary_
+
+    Args:
+        file (str): _description_
+
+    Raises:
+        ValueError: _description_
+
+    Returns:
+        _type_: _description_
+    """
     if info:=parse_filename(file):
         # print(info.group('banda'),info.group('fecha_inicio'))
         return (info['satelite'],info['banda'],info['fecha_inicio'])
@@ -132,7 +159,15 @@ def band_date_sort(file:str):
         raise ValueError(f"Filename '{file}' does not match expected pattern.")
 
 def sort_time_comparative(band_folder:Path|None=None,date_format:str="%Y-%m-%d-%H_%M")->None:
+    """_summary_
 
+    Args:
+        band_folder (Path | None, optional): _description_. Defaults to None.
+        date_format (str, optional): _description_. Defaults to "%Y-%m-%d-%H_%M".
+
+    Raises:
+        ValueError: _description_
+    """
 
     if not band_folder:
         band_folder=Path("INPUT")
@@ -173,7 +208,22 @@ def check_valid_entries(
     input_folder: Path | str = Path("INPUT"),
     satellite: Literal["Sentinel-2"] = "Sentinel-2",
 ) -> tuple[list[SceneEntry], list[SceneEntry]]:
+    """_summary_
 
+    Args:
+        bands (list[str]): _description_
+        input_folder (Path | str, optional): _description_. Defaults to Path("INPUT").
+        satellite (Literal[&quot;Sentinel, optional): _description_. Defaults to "Sentinel-2".
+
+    Raises:
+        NotImplementedError: _description_
+        ValueError: _description_
+        FileNotFoundError: _description_
+        FileNotFoundError: _description_
+
+    Returns:
+        tuple[list[SceneEntry], list[SceneEntry]]: _description_
+    """
     if satellite != "Sentinel-2":
         raise NotImplementedError(f"Satellite '{satellite}' not implemented.")
 
@@ -230,6 +280,11 @@ def check_valid_entries(
     return complete, incomplete
 
 def read_and_group(entries: list[SceneEntry]) -> dict:
+    """_summary_
+
+    Returns:
+        _type_: _description_
+    """
     grouped = defaultdict(list)
     meta_ref = {}
 
@@ -344,16 +399,5 @@ def reproject_raster(src_path:str|Path, dst_crs:str = "EPSG:32629")->tuple[np.nd
         return dest_array, kwargs
 
 if __name__ == "__main__":
-    # valid,falty=check_valid_entries(["B04","B08"])
-    # a,b,c=read_and_group(valid)
 
-
-    # print(valid)
-    # print('='*200)
-    # print(falty)
-    # print('='*200)
-    # print('='*200)
-    # print(c['id'])
-    # print('='*200)
-    # print(c[['B04','BO8']])
     sort_time_comparative()

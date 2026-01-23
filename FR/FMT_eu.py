@@ -29,7 +29,7 @@ FINAL_MAP = {
 }
 
 def fmt(input_file:str|Path,output_folder=Path('OUTPUT') ,file_name:str='FMT',
-        export_image:bool=False) -> np.ndarray:
+        export_image:bool=False,show_plots:bool=True) -> np.ndarray:
     
     """Calculates Fuel Model Type (FMT) remapping with two classification levels.
         
@@ -41,6 +41,7 @@ def fmt(input_file:str|Path,output_folder=Path('OUTPUT') ,file_name:str='FMT',
         output_folder: Output folder path for saving results. Defaults to 'OUTPUT'
         id_name: Identifier for output files. Defaults to 'FMT'
         export_image: Whether to save figure and GeoTIFF/PNG files. Defaults to False
+        show_plots (bool, optional): _description_. Defaults to False.
         
     Returns:
         Remapped array classified into final FMT risk categories (int32)
@@ -78,6 +79,9 @@ def fmt(input_file:str|Path,output_folder=Path('OUTPUT') ,file_name:str='FMT',
 
     
     fig1,ax1 = default_imshow(fmt_final,'Fuel Model Type Risk Map')
+
+    if show_plots:
+        plt.show()
 
     if export_image:
 

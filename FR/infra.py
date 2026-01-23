@@ -42,7 +42,8 @@ def infrastructure(input_infra: str|Path,
                    output_folder: str|Path = Path('OUTPUT'),
                    ref_raster: str|Path = Path(r'REFERENCE\MDT\DEM_NationalScenario_2013.tif'),
                    epsg: int = 32629, 
-                   export_image: bool = False, 
+                   export_image: bool = False,
+                   show_plots: bool = False,     
                    simplify: bool = False, 
                    tolerance: int = 10) -> npt.NDArray:
     """_summary_
@@ -53,6 +54,7 @@ def infrastructure(input_infra: str|Path,
         ref_raster (str, optional): _description_. Defaults to Path('REFERENCE/MDT/DEM_NationalScenario_2013.tif').
         epsg (int, optional): _description_. Defaults to 32629.
         export_image (bool, optional): _description_. Defaults to False.
+        show_plots (bool, optional): _description_. Defaults to False.
         simplify (bool, optional): _description_. Defaults to False.
         tolerance (int, optional): _description_. Defaults to 10.
 
@@ -130,6 +132,9 @@ def infrastructure(input_infra: str|Path,
     # Visualizar resultado
     fig1, ax1 = default_imshow(raster_data, 'Roads and Railways Risk Map', {'label': 'Risk'})
     fig1.set_size_inches((12, 8))
+
+    if show_plots:
+        plt.show()
     
     # Guardar archivos si se solicita
     if export_image:

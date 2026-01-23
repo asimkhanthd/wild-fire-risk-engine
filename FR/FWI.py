@@ -14,7 +14,7 @@ from scipy.interpolate import griddata
 
 
 def f_w_index(input_folder:str|Path,file_name:str='FWI_Risk_Map',output_folder:Path|str=Path('OUTPUT'),
-    export_image:bool=False,crs:str="EPSG:4326")->np.ndarray:
+    export_image:bool=False,show_plots:bool=False,crs:str="EPSG:4326")->np.ndarray:
 
     """Calculates Canadian Forest Fire Weather Index (FWI) from netCDF climate data.
     
@@ -27,6 +27,7 @@ def f_w_index(input_folder:str|Path,file_name:str='FWI_Risk_Map',output_folder:P
         file_name: Identifier for output files. Defaults to 'FWI_Risk_Map'
         output_folder: Output folder for saving results. Defaults to 'OUTPUT'
         export_image: Whether to save GeoTIFF/PNG files. Defaults to False
+        show_plots (bool, optional): _description_. Defaults to False.
         crs: Coordinate reference system. Defaults to "EPSG:4326"
         
     Returns:
@@ -114,10 +115,6 @@ def f_w_index(input_folder:str|Path,file_name:str='FWI_Risk_Map',output_folder:P
         print(f"\t DC max:   {np.max(d):.2f}\n")
 
 
-            
-
-
-
     # --------------------------------------------------------
     # FWI final - procesar directamente en memoria
     # --------------------------------------------------------
@@ -174,7 +171,8 @@ def f_w_index(input_folder:str|Path,file_name:str='FWI_Risk_Map',output_folder:P
 
     fig1,ax1=default_imshow(fwi_clas,'Fire Weather Index Risk Map',{'label':'Risk'})
 
-    plt.show()
+    if show_plots:
+        plt.show()
 
     if export_image:
 

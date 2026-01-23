@@ -10,7 +10,18 @@ from pathlib import Path
 
 def mdt(ruta_mdt,output_folder:str|Path=Path('OUTPUT'),
         export_image=False,
-        show_plots=True):
+        show_plots=True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """_summary_
+
+    Args:
+        ruta_mdt (_type_): _description_
+        output_folder (str | Path, optional): _description_. Defaults to Path('OUTPUT').
+        export_image (bool, optional): _description_. Defaults to False.
+        show_plots (bool, optional): _description_. Defaults to True.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray, np.ndarray]: _description_
+    """
     
     # XXX: Hay dos parametros de salida que no se usan: ruta_slope, ruta_aspect
 

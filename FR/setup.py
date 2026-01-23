@@ -13,7 +13,7 @@ from datetime import datetime as time
 from collections import defaultdict
 from typing import Literal, TypedDict
 from itertools import batched
-from enum import Enum
+from dataclasses import dataclass
 
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from datetime import datetime
@@ -24,26 +24,13 @@ DEFAULT_PLOT={
     'save':{'dpi':300,'bbox_inches':'tight'}
 }
 
-class Sen2(Enum):
-    
-    """Bandas espectrales de Sentinel-2."""
-
-    B01 = "B01"
-    B02 = "B02"
-    B03 = "B03"
-    B04 = "B04"
-    B05 = "B05"
-    B06 = "B06"
-    B07 = "B07"
-    B08 = "B08"
-    B8A = "B8A"
-    B09 = "B09"
-    B10 = "B10"
-    B11 = "B11"
-    B12 = "B12"
-    
-    def __str__(self):
-        return self.value
+@dataclass(frozen=True)
+class SceneEntry:
+    fecha_inicio: str
+    fecha_fin: str
+    satelite: Literal["Sentinel-2"]
+    nivel: str
+    archivos: dict[str, Path]
 
 class ParsedFilename(TypedDict):
     fecha_inicio: datetime
@@ -181,133 +168,87 @@ def sort_time_comparative(band_folder:Path|None=None,date_format:str="%Y-%m-%d-%
             shutil.move(band_folder/prev_fire,pre_fire_folder/prev_fire)
             shutil.move(band_folder/post_fire,post_fire_folder/post_fire)
 
-def check_valid_entries(bands: list[str], input_folder: str = "INPUT",satellite: Literal['Sentinel-2'] = 'Sentinel-2') -> tuple[list[dict], list[dict]]:
-    """Valida que todas las bandas requeridas existan para cada escena temporal.
-    
-    Agrupa archivos por fecha, satélite y nivel, verificando que todas las bandas
-    requeridas estén presentes en cada grupo.
-    
-    Args:
-        bands: Lista de bandas requeridas (ej: ['B04', 'B08', 'B12'])
-        input_folder: Ruta a la carpeta con archivos TIFF
-        satellite: Satélite esperado (actualmente solo 'Sentinel-2')
-    
-    Returns:
-        Tupla (entradas_completas, entradas_incompletas) donde cada entrada es un dict con:
-        - fecha_inicio, fecha_fin, satelite, nivel
-        - archivos: rutas de archivos encontrados
-        - bandas_faltantes: bandas no encontradas (vacío si completa)
-    
-    Raises:
-        FileNotFoundError: Si no hay entradas completas
-        NotImplementedError: Si el satélite no está soportado
-    """
-    
+def check_valid_entries(
+    bands: list[str],
+    input_folder: Path | str = Path("INPUT"),
+    satellite: Literal["Sentinel-2"] = "Sentinel-2",
+) -> tuple[list[SceneEntry], list[SceneEntry]]:
+
     if satellite != "Sentinel-2":
-        raise NotImplementedError(f"Satellite '{satellite}' not implemented yet.")
-    
-    # Validar input_folder
+        raise NotImplementedError(f"Satellite '{satellite}' not implemented.")
+
     input_path = Path(input_folder)
     if not input_path.is_dir():
-        raise ValueError(f"Input folder '{input_folder}' does not exist or is not a directory.")
-    
-    # Buscar archivos TIFF
-    tiff_files = list(input_path.glob("*.tiff"))
-    if not tiff_files:
+        raise ValueError(f"'{input_folder}' is not a valid directory.")
+
+    files = list(input_path.glob("*.tiff"))
+    if not files:
         raise FileNotFoundError(f"No TIFF files found in '{input_folder}'.")
-    
-    # Agrupar por escena temporal
-    scenes = defaultdict(list)
-    for file_path in tiff_files:
-        parsed = parse_filename(file_path.name)
-        if parsed['banda'] not in bands:
+
+    scenes = defaultdict(dict)
+    required_bands = set(bands)
+
+    for path in files:
+        parsed = parse_filename(path.name)
+        band = parsed["banda"]
+
+        if band not in required_bands:
             continue
-        
-        scene_key = (
-            parsed['fecha_inicio'],
-            parsed['fecha_fin'],
-            parsed['satelite'],
-            parsed['nivel'],
+
+        key = (
+            parsed["fecha_inicio"],
+            parsed["fecha_fin"],
+            parsed["satelite"],
+            parsed["nivel"],
         )
-        scenes[scene_key].append(parsed)
-    
-    # Evaluar completitud de cada escena
-    complete_entries = []
-    incomplete_entries = []
-    
-    available_bands = set(bands)  # Bandas que buscamos
-    
-    for scene_key, files_in_scene in scenes.items():
-        found_bands = {f['banda'] for f in files_in_scene}
-        missing_bands = available_bands - found_bands
-        
-        entry = {
-            'fecha_inicio': scene_key[0],
-            'fecha_fin': scene_key[1],
-            'satelite': scene_key[2],
-            'nivel': scene_key[3],
-            'archivos': sorted([input_path / f['filename'] for f in files_in_scene]),
-            'bandas_faltantes': sorted(missing_bands),
-        }
-        
-        if missing_bands:
-            incomplete_entries.append(entry)
+
+        scenes[key][band] = path
+
+    complete, incomplete = [], []
+
+    for (fi, ff, sat, lvl), band_map in scenes.items():
+        missing = required_bands - band_map.keys()
+
+        entry = SceneEntry(
+            fecha_inicio=fi,
+            fecha_fin=ff,
+            satelite=sat,
+            nivel=lvl,
+            archivos=band_map,
+        )
+
+        if missing:
+            incomplete.append(entry)
         else:
-            complete_entries.append(entry)
-    
-    # Error si no hay entradas completas
-    if not complete_entries:
-        if incomplete_entries:
-            first_incomplete = incomplete_entries[0]
-            missing = ', '.join(first_incomplete['bandas_faltantes'])
-            msg = (f"No valid entries found with all required bands {bands}.\n"
-                   f"Sample: {first_incomplete['fecha_inicio']}_{first_incomplete['fecha_fin']}\n"
-                   f"Missing: {missing}")
-        else:
-            msg = f"No files matching pattern found in '{input_folder}'."
-        raise FileNotFoundError(msg)
-    
-    return complete_entries, incomplete_entries
+            complete.append(entry)
 
-def read_and_group(valids:list[dict]):
-    """Group bands from valid file entries.
+    if not complete:
+        raise FileNotFoundError(
+            f"No complete scenes found for required bands {bands}"
+        )
 
-    Args:
-        valids (list[dict]): List of valid file entry dictionaries
+    return complete, incomplete
 
-    Returns:
-        dict: Dictionary grouped by band with keys: 'meta_ref', 'id', and band names
-    """
+def read_and_group(entries: list[SceneEntry]) -> dict:
+    grouped = defaultdict(list)
+    meta_ref = {}
 
-    entry_arrays_tiffs={}
-    meta_ref={}
+    for scene in entries:
+        scene_id = "_".join(
+            [scene.fecha_inicio, scene.fecha_fin, scene.satelite, scene.nivel]
+        )
+        grouped["id"].append(scene_id)
 
-    good_dict=defaultdict(list)
-
-    for listado in valids:
-        bands=[]
-        
-        for path in listado['archivos']:
-
+        for band, path in scene.archivos.items():
             with rasterio.open(path) as src:
+                if scene.fecha_inicio not in meta_ref:
+                    meta_ref[scene.fecha_inicio] = src.meta.copy()
+                    grouped["meta_ref"].append(src.meta.copy())
 
-                if listado['fecha_inicio'] not in meta_ref:
+                data = src.read(1).astype(np.float32)
+                grouped[band].append(data)
 
-                    meta_ref[listado['fecha_inicio']]=src.meta.copy()
-                    good_dict['meta_ref'].append(src.meta.copy())
-                    
-                bands.append(src.read(1).astype(np.float32))
-
-                parsed = parse_filename(path.name)
-                current_band = parsed['banda']
-                good_dict[current_band].append(src.read(1).astype(np.float32))
-
-        name_keys = ['fecha_inicio', 'fecha_fin', 'satelite', 'nivel']
-        id="_".join(listado[k] for k in name_keys)
-        entry_arrays_tiffs[id]=bands
-        good_dict['id'].append(id)
-
-    return good_dict
+    return grouped
 
 def default_imshow(array: npt.NDArray, title: str, colorbar_params: dict | None = None) -> tuple[Figure, Axes]:
     """Muestra un array como imagen con colorbar y configuración por defecto.

@@ -5,7 +5,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import geopandas as gpd
 
-from setup import *
+from FR.rutinas.setup import (
+    sort_time_comparative,
+    band_date_sort,
+    parse_filename,
+    reproject_raster,
+    default_imshow,
+    save_file,
+)
 from itertools import groupby
 from pathlib import Path
 from rasterio.warp import reproject, Resampling

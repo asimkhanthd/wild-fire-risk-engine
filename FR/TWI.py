@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from pathlib import Path
-from setup import *
+from FR.rutinas.setup import *
 
 def twi(input_folder:str='INPUT',output_folder:str="OUTPUT",export_image:bool=False)->None:
     """_summary_

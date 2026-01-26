@@ -4,7 +4,7 @@ import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
 
-from setup import *
+from FR.rutinas.setup import *
 from pathlib import Path
 
 ROTHERMEL_MAP = {

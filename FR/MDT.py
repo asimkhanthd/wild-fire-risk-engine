@@ -4,7 +4,7 @@ import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
 
-from setup import *
+from FR.rutinas.setup import default_imshow, save_file
 from osgeo import gdal
 from pathlib import Path
 

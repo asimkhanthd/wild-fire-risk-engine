@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import geopandas as gpd
 
-from setup import *
+from FR.rutinas.setup import *
 from pathlib import Path
 from rasterio.io import MemoryFile
 from rasterio.transform import from_bounds

@@ -31,6 +31,10 @@ class SceneEntry:
     satelite: Literal["Sentinel-2"]
     nivel: str
     archivos: dict[str, Path]
+    
+    @property
+    def id(self) -> str:
+        return f"{self.fecha_inicio}_{self.fecha_fin}_{self.satelite}_{self.nivel}"
 
 @dataclass
 class ParsedFilename:
@@ -240,8 +244,8 @@ def check_valid_entries(
             continue
 
         key = (
-            parsed.fecha_inicio,
-            parsed.fecha_fin,
+            parsed.fecha_inicio.strftime("%Y-%m-%d-%H_%M"),
+            parsed.fecha_fin.strftime("%Y-%m-%d-%H_%M"),
             parsed.satelite,
             parsed.nivel,
         )
@@ -284,10 +288,7 @@ def read_and_group(entries: list[SceneEntry]) -> dict:
     meta_ref = {}
 
     for scene in entries:
-        scene_id = "_".join(
-            [scene.fecha_inicio, scene.fecha_fin, scene.satelite, scene.nivel]
-        )
-        grouped["id"].append(scene_id)
+        grouped["id"].append(scene.id)
 
         for band, path in scene.archivos.items():
             with rasterio.open(path) as src:
@@ -318,6 +319,7 @@ def default_imshow(array: npt.NDArray, title: str, colorbar_params: dict | None 
         colorbar_params = {}
     
     fig1, ax1 = plt.subplots(**DEFAULT_PLOT['figure'])
+
     img1 = ax1.imshow(array, **DEFAULT_PLOT['imshow'])
     fig1.colorbar(img1, ax=ax1, **colorbar_params)
     ax1.set_title(title)
@@ -340,16 +342,21 @@ def save_file(array: npt.NDArray, id_name: str, output_folder: Path|str, meta: d
     Returns:
         tuple[Path, ...]: _description_
     """
-    if isinstance(output_folder, str):
-        output_folder = Path(output_folder)
+
+    output_folder = Path(output_folder)
     if not meta:
         meta={}
 
     meta_i = meta.copy()
     if not meta_intact:
         meta_i.update(driver='GTiff', dtype='float32', count=1)
-    
+
+
     file_name=f'{id_name}_({type_name})' if type_name else f'{id_name}'
+
+    for extension in extensions:
+        ext_folder = output_folder / f'{extension.upper()}s'
+        ext_folder.mkdir(parents=True, exist_ok=True)
 
     files_2_save = tuple([output_folder / f'{extension.upper()}s' /f'{file_name}.{extension}' for extension in extensions]) if isinstance(extensions,list) else tuple([output_folder / f'{extensions.upper()}s' /f'{file_name}.{extensions}'])
     
@@ -362,7 +369,6 @@ def save_file(array: npt.NDArray, id_name: str, output_folder: Path|str, meta: d
             fig.savefig(file, **DEFAULT_PLOT['save']); plt.close()
 
         else:
-
             with rasterio.open(file, 'w', **meta_i) as dst:
                 dst.write(array.astype('float32'), 1)
 

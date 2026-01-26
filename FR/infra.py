@@ -7,7 +7,8 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import rasterio
 
-from setup import *
+from FR.rutinas.setup import default_imshow, save_file
+import numpy.typing as npt
 from pathlib import Path
 from rasterio.features import rasterize
 from rasterio.transform import from_bounds

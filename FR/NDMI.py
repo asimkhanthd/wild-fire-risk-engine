@@ -3,7 +3,7 @@ import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
 
-from setup import *
+from FR.rutinas.setup import *
 from pathlib import Path
 
 def ndmi(b8:str|Path,b11:str|Path,output_folder:str='OUTPUT',export_image:bool=False)->None:

@@ -3,7 +3,13 @@ import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
 
-from setup import *
+from FR.rutinas.setup import (
+    parse_filename,
+    check_valid_entries,
+    read_and_group,
+    default_imshow,
+    save_file,
+)
 from pathlib import Path
 
 def ndvi(b4:str|Path,b8:str|Path,output_folder:str='OUTPUT',export_image:bool=False)->tuple[np.ndarray,np.ndarray]:
@@ -36,13 +42,13 @@ def ndvi(b4:str|Path,b8:str|Path,output_folder:str='OUTPUT',export_image:bool=Fa
     ndvi = np.array( (band8 - band4) / (band8 + band4) )
     
     condiciones = [
-        (ndvi <= 0.27,
+        ndvi <= 0.27,
         (ndvi > 0.27) & (ndvi <= 0.40),
         (ndvi > 0.40) & (ndvi <= 0.54),
         (ndvi > 0.54) & (ndvi <= 0.67),
-        ndvi > 0.67) 
-        ]
-    
+        ndvi > 0.67
+    ]
+
     valores = [5, 4, 3, 2, 1]
 
     reclasificado = np.select(condiciones, valores, default=0).astype('int32')
@@ -60,7 +66,7 @@ def ndvi(b4:str|Path,b8:str|Path,output_folder:str='OUTPUT',export_image:bool=Fa
 
     return ndvi,reclasificado
 
-def NDVI_folder(input_folder:str='INPUT',output_folder:str='OUTPUT',export_image:bool=False)->None:
+def NDVI_folder(input_folder:str='INPUT',output_folder:str='OUTPUT',indices:list[int]|None=None,export_image:bool=False)->None:
     """_summary_
 
     Args:
@@ -74,31 +80,40 @@ def NDVI_folder(input_folder:str='INPUT',output_folder:str='OUTPUT',export_image
   
     info=read_and_group(valids)
       
+
+    if indices is None:
+        indices= list(range(len(info['id'])))
+        METAS=info['meta_ref']
+        IDS=info['id']
+    else:
+        METAS=[ info['meta_ref'][i] for i in indices ]
+        IDS=[ info['id'][i] for i in indices ]
+
     np.seterr(divide='ignore', invalid='ignore')
 
     ndvi =np.array([(info['B08'][i] - info['B04'][i]) / (info['B08'][i] + info['B04'][i]) 
-           for i in range(len(info['id']))])
+           for i in indices])
 
     condiciones = [
-        (ndvi <= 0.27,
+        ndvi <= 0.27,
         (ndvi > 0.27) & (ndvi <= 0.40),
         (ndvi > 0.40) & (ndvi <= 0.54),
         (ndvi > 0.54) & (ndvi <= 0.67),
-        ndvi > 0.67) 
-        ]
-    
+        ndvi > 0.67
+    ]
+
     valores = [5, 4, 3, 2, 1]
 
     reclasificados = np.select(condiciones, valores, default=0).astype('int32')
 
     if export_image:
         
-        for ndvi_i,meta_ref_i,extra_info in zip(ndvi,info['meta_ref'],info['id']): 
+        for ndvi_i,meta_ref_i,extra_info in zip(ndvi,METAS,IDS): 
 
             fig1,ax1=default_imshow(ndvi_i,'NDVI')
             save_file(ndvi_i, extra_info, output_folder, meta_ref_i, 'NDVI',extensions=['tif','tiff','png'], fig=fig1)
            
-        for reclasificado_i,meta_ref_i,extra_info in zip(reclasificados,info['meta_ref'],info['id']):
+        for reclasificado_i,meta_ref_i,extra_info in zip(reclasificados,METAS,IDS):
 
             fig1,ax1=default_imshow(reclasificado_i,'NDVI Risk Map')
             save_file(reclasificado_i, extra_info, output_folder, meta_ref_i, 'NDVI_Risk_Map',extensions=['tif','tiff','png'], fig=fig1)
@@ -110,7 +125,7 @@ if __name__ == "__main__":
     import pstats
 
     with cProfile.Profile() as profile:
-        NDVI_folder()
+        NDVI_folder(export_image=True)
 
     results = pstats.Stats(profile)
     results.sort_stats(pstats.SortKey.TIME)

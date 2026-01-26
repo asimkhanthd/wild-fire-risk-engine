@@ -3,7 +3,13 @@ import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
 
-from setup import *
+from FR.rutinas.setup import (
+    parse_filename,
+    check_valid_entries,
+    read_and_group,
+    default_imshow,
+    save_file,
+)
 from pathlib import Path
 
 def gci(b3:str|Path,b8:str|Path,output_folder:str='OUTPUT',
@@ -46,7 +52,7 @@ def gci(b3:str|Path,b8:str|Path,output_folder:str='OUTPUT',
 
     return gci
 
-def GCI_folder(input_folder:str='INPUT',output_folder:str='OUTPUT',export_image:bool=False)->None:
+def GCI_folder(input_folder:str='INPUT',output_folder:str='OUTPUT',indices:None|list[int]=None,export_image:bool=False)->None:
     """_summary_
 
     Args:
@@ -60,16 +66,24 @@ def GCI_folder(input_folder:str='INPUT',output_folder:str='OUTPUT',export_image:
     info=read_and_group(valids)
    
     np.seterr(divide='ignore', invalid='ignore')
+    
+    if indices is None:
+        indices= list(range(len(info['id'])))
+        METAS=info['meta_ref']
+        IDS=info['id']
+    else:
+        METAS=[ info['meta_ref'][i] for i in indices ]
+        IDS=[ info['id'][i] for i in indices ]
 
     gci =[ (info['B08'][i] / info['B03'][i]) - 1
-          for i in range(len(info['id'])) ]
+          for i in indices ]
     
     if export_image:
 
-        for gci_i,meta_ref_i,extra_info in zip(gci,info['meta_ref'],info['id']):
-    
+        for gci_i,meta_ref_i,extra_info in zip(gci,METAS,IDS):
+            
             fig1,ax1=default_imshow(gci_i,'GCI')
-            save_file(gci_i, extra_info, output_folder, meta_ref_i, 'TWI',extensions=['tif','tiff','png'], fig=fig1)
+            save_file(gci_i, extra_info, output_folder, meta_ref_i, 'GCI',extensions=['tif','tiff','png'], fig=fig1)
 
 if __name__ == "__main__":
 

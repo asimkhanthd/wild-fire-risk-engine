@@ -7,7 +7,7 @@ import numpy.ma as ma
 import matplotlib.pyplot as plt
 import rutinas.FWI_Equations as Fwi
 # import tifffile as tif
-from setup import *
+from FR.rutinas.setup import default_imshow, save_file
 from pathlib import Path
 from rasterio.transform import from_origin
 from scipy.interpolate import griddata

@@ -52,5 +52,3 @@ for filename in os.listdir(input_folder):
         print(f"  ✓ {filename}")
 
 print("Reprojection completed.")
-
-print("cambio pequeño")

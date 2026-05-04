@@ -192,7 +192,7 @@ final_weights = calculate_weights(normalize_matrix(comparison_matrix))
 
 cr = consistency_ratio(comparison_matrix, final_weights)
 print(f'CR de la matriz principal: {cr:.4f}')
-print("La matriz es consistente." if cr < 0.1 else "⚠️ La matriz no es consistente.")
+print("La matriz es consistente." if cr < 0.1 else "La matriz no es consistente.")
 
 # ==========================================
 # 5. MAPA DE RIESGO FINAL Y GUARDADO
@@ -242,7 +242,7 @@ with rasterio.open(output_path) as mapa_final:
     with rasterio.open(fr_final, 'w', **meta) as dst:
         dst.write(fr_clasificado, 1)
 
-print(f"✅ Mapa final guardado exitosamente en:\n '{fr_final}'")
+print(f"Mapa final guardado exitosamente en:\n '{fr_final}'")
 
 # ==========================================
 # 6. LIMPIEZA DE CARPETA INTERMEDIA

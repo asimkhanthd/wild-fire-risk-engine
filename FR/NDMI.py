@@ -3,53 +3,77 @@ import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
 
-def Ndmi(input_b8:str,input_b11:str,export_image:bool=False)->None:
-    """Calcula el NDMI
+from FR.rutinas.setup import *
+from pathlib import Path
+
+def ndmi(b8:str|Path,b11:str|Path,output_folder:str='OUTPUT',export_image:bool=False)->None:
+    """_summary_
 
     Args:
-        input_b8 (str): primera banda
-        input_b11 (str): segunda banda
-        export_image (bool, optional): se guarda copia en .png . Defaults to False.
+        b11 (str | Path): _description_
+        b8 (str | Path): _description_
+        output_folder (str, optional): _description_. Defaults to 'OUTPUT'.
+        export_image (bool, optional): _description_. Defaults to False.
+
+    Returns:
+        _type_: _description_
     """
-
-    with rasterio.open(input_b8) as b8_src:
-        nir_band = b8_src.read(1).astype('float32')
-        meta_ref = b8_src.meta.copy()
-
-    with rasterio.open(input_b11) as b4_src:
-        swir_band = b4_src.read(1).astype('float32')
+    b8=Path(b8)
+    b11=Path(b11)
 
     np.seterr(divide='ignore', invalid='ignore')
-    ndmi = (nir_band - swir_band) / (nir_band + swir_band)
 
-    # Preguntar si guardar imágenes (TIFF/TIF en una carpeta, PNG en otra)
+    with rasterio.open(b11) as src_b11:
+        band11 = src_b11.read(1).astype('float32')
+        meta_ref = src_b11.meta.copy()
+    with rasterio.open(b8) as src_b8:
+        band8 = src_b8.read(1).astype('float32')
+    
+    mini_info=parse_filename(b11.name)
+    name_id=mini_info.id
+
+    ndmi = (band8 - band11) / ( band8 + band11 )
+    
+    if export_image:
+        fig1,ax1=default_imshow(ndmi,'ndmi')
+        save_file(ndmi, name_id, output_folder, meta_ref, 'NDMI',extensions=['tif','tiff','png'], fig=fig1)
+
+    return ndmi
+
+def NDMI_folder(input_folder:str='INPUT',output_folder:str="OUTPUT",export_image:bool=False)->np.ndarray:
+    """_summary_
+
+    Args:
+        input_folder (str, optional): _description_. Defaults to 'INPUT'.
+        output_folder (str, optional): _description_. Defaults to "OUTPUT".
+        export_image (bool, optional): _description_. Defaults to False.
+    """
+
+    valids,_=check_valid_entries(["B08","B11"],input_folder=input_folder)
+
+    info=read_and_group(valids)
+
+    np.seterr(divide='ignore', invalid='ignore')
+
+    ndmi = np.array([(info['B08'][i] - info['B11'][i]) / (info['B08'][i] + info['B11'][i]) 
+            for i in range(len(info['id'])) ])
 
     if export_image:
-        tiff_dir = r'..\OUTPUT\NDMI'
-        png_dir = r'..\OUTPUT\NDMI\PNGs'
 
-        os.makedirs(tiff_dir, exist_ok=True); os.makedirs(png_dir, exist_ok=True)
+        for ndm_i,meta_ref_i,extra_info in zip(ndmi,info['meta_ref'],info['id']):
+            fig1,ax1=default_imshow(ndm_i,'NDMI')
+            save_file(ndm_i, extra_info, output_folder, meta_ref_i, 'NDMI',extensions=['tif','tiff','png'], fig=fig1)
+    
+    return ndmi
 
-        # Guardar NDMI como .tiff y .tif (float32)
-        meta_ndmi = meta_ref.copy()
+if __name__ == "__main__":
 
-        meta_ndmi.update(driver='GTiff', dtype='float32', count=1)
-        ndmi_tiff = os.path.join(tiff_dir, 'ndmi.tiff')
-        ndmi_tif  = os.path.join(tiff_dir, 'ndmi.tif')
+    import cProfile
+    import pstats
 
-        with rasterio.open(ndmi_tiff, 'w', **meta_ndmi) as dst: dst.write(ndmi.astype('float32'), 1)
-        with rasterio.open(ndmi_tif,  'w', **meta_ndmi) as dst: dst.write(ndmi.astype('float32'), 1)
+    with cProfile.Profile() as profile:
+        NDMI_folder()
 
-        # Guardar reclasificado como .tiff y .tif (int32)
-        meta_recl = meta_ref.copy(); meta_recl.update(driver='GTiff', dtype='int32', count=1)
-
-        # Guardar PNGs en carpeta separada
-        plt.figure(figsize=(8,6)); 
-        plt.imshow(ndmi, cmap='RdYlGn'); plt.colorbar(); plt.title('NDMI'); plt.tight_layout()
-        plt.savefig(os.path.join(png_dir, 'ndmi.png'), dpi=300, bbox_inches='tight'); plt.close()
-
-        print(f"Imágenes guardadas en:\n - Rasters: {tiff_dir}\n - PNGs: {png_dir}")
-
-
-    plt.figure(figsize=(8,6)); 
-    plt.imshow(ndmi, cmap='RdYlGn'); plt.colorbar(); plt.title('NDMI'); plt.tight_layout(); plt.show()
+    results = pstats.Stats(profile)
+    results.sort_stats(pstats.SortKey.TIME)
+    results.print_stats(20)

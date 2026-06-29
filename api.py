@@ -1198,5 +1198,5 @@ if __name__ == "__main__":
     # Host/port are env-configurable so they can be changed from the .env file
     # without touching code (defaults match the bundled docker-compose setup).
     host = os.environ.get("STORCITO_HOST", "0.0.0.0")
-    port = int(os.environ.get("STORCITO_PORT", "8090"))
+    port = int(os.environ.get("STORCITO_PORT", "8085"))
     uvicorn.run("api:app", host=host, port=port, reload=True)

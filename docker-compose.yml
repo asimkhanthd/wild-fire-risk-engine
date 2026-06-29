@@ -1,6 +1,6 @@
 x-storcito-env: &storcito-env
   STORCITO_HOST: 0.0.0.0
-  STORCITO_PORT: "8090"
+  STORCITO_PORT: "8085"
   MPLBACKEND: Agg
   TERM: xterm-256color
   PYTHONPATH: /app:/app/FR
@@ -43,7 +43,7 @@ x-storcito-api: &storcito-api
     test:
       [
         "CMD-SHELL",
-        "micromamba run -n storcito python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=5).read()\"",
+        "micromamba run -n storcito python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8085/health', timeout=5).read()\"",
       ]
     interval: 10s
     timeout: 10s
@@ -53,7 +53,7 @@ x-storcito-api: &storcito-api
   command: >
     uvicorn api:app
     --host 0.0.0.0
-    --port 8090
+    --port 8085
 
 services:
   postgis:
@@ -105,7 +105,7 @@ services:
     image: haproxy:2.9-alpine
     container_name: storcito-haproxy
     ports:
-      - "${STORCITO_PORT:-8090}:80"
+      - "${STORCITO_PORT:-8085}:80"
       - "${STORCITO_HAPROXY_STATS_PORT:-8406}:8404"
     volumes:
       - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro

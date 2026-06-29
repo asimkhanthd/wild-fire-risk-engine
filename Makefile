@@ -1,6 +1,9 @@
 COMPOSE ?= docker compose
-SERVICE ?= storcito
+SERVICE ?= storcito-api-1
+LB_SERVICE ?= haproxy
+API_SERVICES ?= storcito-api-1 storcito-api-2 storcito-api-3 storcito-api-4
 GEOTOOLS_SERVICE ?= geotools
+MICROMAMBA_ENV ?= storcito
 
 PGHOST ?= 127.0.0.1
 PGPORT ?= 5432
@@ -20,8 +23,8 @@ help:
 	@echo "  make up        Start the stack in detached mode"
 	@echo "  make down      Stop and remove containers"
 	@echo "  make restart   Restart the service"
-	@echo "  make logs      Tail service logs"
-	@echo "  make shell     Open a shell inside the running container"
+	@echo "  make logs      Tail HAProxy + API service logs"
+	@echo "  make shell     Open a shell inside the first API container"
 	@echo "  make seed      Load all INPUT/ data into PostGIS"
 	@echo "  make seed-gis  Load GIS raster/vector tables only"
 	@echo "  make seed-files Load FWI/HIST file-backed tables only"
@@ -38,7 +41,7 @@ seed-gis:
 		$(GEOTOOLS_SERVICE) bash scripts/seed.sh $(TABLES)
 
 seed-files:
-	$(COMPOSE) exec -T $(SERVICE) micromamba run -n $(SERVICE) \
+	$(COMPOSE) exec -T $(SERVICE) micromamba run -n $(MICROMAMBA_ENV) \
 		python scripts/seed_blobs.py $(WHAT) $(LIMIT)
 
 build:
@@ -51,10 +54,10 @@ down:
 	$(COMPOSE) down
 
 restart:
-	$(COMPOSE) restart $(SERVICE)
+	$(COMPOSE) restart $(LB_SERVICE) $(API_SERVICES)
 
 logs:
-	$(COMPOSE) logs -f --tail=200 $(SERVICE)
+	$(COMPOSE) logs -f --tail=200 $(LB_SERVICE) $(API_SERVICES)
 
 shell:
 	$(COMPOSE) exec $(SERVICE) bash

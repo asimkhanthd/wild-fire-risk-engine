@@ -38,6 +38,14 @@ from FR.db_reconstruct import (
     available_fwi_dates_db,
     highest_temperature_fwi_dates_db,
 )
+from FR.db_user_inputs import (
+    KIND_DTM,
+    KIND_STATION_DATA,
+    USER_INPUT_TABLE,
+    materialize_user_input,
+    store_dtm_file,
+    store_station_csv_file,
+)
 
 app = FastAPI(title="STORCITO API")
 BASE_DIR = Path(__file__).resolve().parent
@@ -228,35 +236,162 @@ def _wildfire_optional_layers(payload: WildfireCalculationRequest) -> dict[str, 
     return result
 
 
-def _wildfire_user_inputs(payload: WildfireCalculationRequest, dest_dir: Path) -> dict[str, Path]:
-    """Download optional user-supplied inputs (DTM, station data) advertised in
-    parameters.user_inputs as URLs, returning local paths keyed by kind. Absent
-    or unreachable inputs are skipped so the run falls back to bundled data.
-    """
-    raw = payload.parameters.get("user_inputs")
-    if not isinstance(raw, dict) or not raw:
-        return {}
+def _wildfire_user_input_model_id(payload: WildfireCalculationRequest) -> str:
+    """Stable model id used for reusable user inputs.
 
+    Wildfire dispatch uses a unique run id in payload.model_id
+    (<model_id>_<timestamp>). Store user inputs under the persistent model id so
+    a later run can reuse the same DTM/station CSV from Postgres.
+    """
+    raw = payload.parameters.get("source_model_id")
+    if isinstance(raw, (str, int, float)) and str(raw).strip():
+        return str(raw).strip()
+    return str(payload.model_id).split("_", 1)[0]
+
+
+def _source_filename_from_response(resp: httpx.Response, fallback: str) -> str:
+    disposition = resp.headers.get("content-disposition", "")
+    match = re.search(r'filename="?([^";]+)"?', disposition)
+    if match:
+        return match.group(1)
+    return fallback
+
+
+def _log_user_input(message: str) -> None:
+    print(f"[STORCITO user-inputs] {message}", flush=True)
+
+
+def _materialize_stored_user_input(
+    payload: WildfireCalculationRequest,
+    model_id: str,
+    kind: str,
+    dest_dir: Path,
+) -> Path | None:
+    dest_name = "dtm.tif" if kind == KIND_DTM else "station_data.csv"
+    path = materialize_user_input(payload.user_id, model_id, kind, dest_dir / dest_name)
+    if path is not None:
+        _log_user_input(f"reused stored {kind} from {USER_INPUT_TABLE} -> {path}")
+    return path
+
+
+def _wildfire_user_inputs(payload: WildfireCalculationRequest, dest_dir: Path) -> dict[str, Path]:
+    """Resolve user-supplied inputs from upload URLs and/or Postgres.
+
+    Fresh uploads advertised in parameters.user_inputs are downloaded, normalised
+    when needed, stored in Postgres, and used for this run. Missing or failed
+    downloads fall back to previously stored inputs for the same user/model.
+    """
+    model_id = _wildfire_user_input_model_id(payload)
+    raw = payload.parameters.get("user_inputs")
     dest_dir.mkdir(parents=True, exist_ok=True)
     paths: dict[str, Path] = {}
-    for kind, url in raw.items():
-        if not isinstance(kind, str) or not isinstance(url, str) or not url:
-            continue
-        try:
-            with httpx.stream("GET", url, timeout=120.0, follow_redirects=True) as resp:
-                resp.raise_for_status()
-                target = dest_dir / kind
-                with target.open("wb") as fh:
-                    for chunk in resp.iter_bytes():
-                        fh.write(chunk)
-            paths[kind] = target
-            size = target.stat().st_size if target.exists() else 0
-            print(f"[FFRM] downloaded user input '{kind}' -> {target} ({size} bytes)", flush=True)
-        except Exception as exc:  # noqa: BLE001 - optional; fall back to bundled
-            logger.warning("Failed to download user input %s from %s: %s", kind, url, exc)
-            print(f"[FFRM] user input '{kind}' download failed: {exc}", flush=True)
+    requested_kinds: set[str] = set()
+
+    if isinstance(raw, dict):
+        for kind, url in raw.items():
+            if kind not in {KIND_DTM, KIND_STATION_DATA}:
+                continue
+            requested_kinds.add(kind)
+            if not isinstance(url, str) or not url:
+                continue
+            try:
+                _log_user_input(
+                    f"upload reference received kind={kind} "
+                    f"user_id={payload.user_id} model_id={model_id}"
+                )
+                upload_path = dest_dir / f"{kind}.upload"
+                source_filename = kind
+                content_type = None
+                with httpx.stream("GET", url, timeout=120.0, follow_redirects=True) as resp:
+                    resp.raise_for_status()
+                    source_filename = _source_filename_from_response(resp, source_filename)
+                    content_type = resp.headers.get("content-type")
+                    expected = resp.headers.get("content-length") or "unknown"
+                    _log_user_input(
+                        f"downloading {kind} from wildfire backend "
+                        f"source_filename={source_filename} content_type={content_type or '-'} "
+                        f"expected_bytes={expected}"
+                    )
+                    downloaded = 0
+                    progress_step = 25 * 1024 * 1024 if kind == KIND_DTM else 5 * 1024 * 1024
+                    next_progress = progress_step
+                    with upload_path.open("wb") as fh:
+                        for chunk in resp.iter_bytes():
+                            if not chunk:
+                                continue
+                            fh.write(chunk)
+                            downloaded += len(chunk)
+                            if downloaded >= next_progress:
+                                _log_user_input(
+                                    f"download progress kind={kind} "
+                                    f"downloaded_bytes={downloaded} expected_bytes={expected}"
+                                )
+                                next_progress += progress_step
+                    _log_user_input(
+                        f"download complete kind={kind} "
+                        f"downloaded_bytes={downloaded} temp_path={upload_path}"
+                    )
+
+                if kind == KIND_DTM:
+                    target = dest_dir / "dtm.tif"
+                    upload_path.replace(target)
+                    _log_user_input(
+                        f"writing DTM into {USER_INPUT_TABLE} "
+                        f"user_id={payload.user_id} model_id={model_id} path={target}"
+                    )
+                    stored = store_dtm_file(
+                        payload.user_id,
+                        model_id,
+                        target,
+                        source_filename=source_filename,
+                        content_type=content_type,
+                    )
+                    _log_user_input(
+                        f"DTM row stored in {USER_INPUT_TABLE} "
+                        f"user_id={payload.user_id} model_id={model_id} "
+                        f"bytes={stored.get('nbytes')} footprint={'yes' if stored.get('footprint') else 'no'}"
+                    )
+                else:
+                    from FR.FWI_excel import convert_station_file_to_csv
+
+                    target = dest_dir / "station_data.csv"
+                    _log_user_input(
+                        f"normalizing station upload to CSV before database store "
+                        f"source_filename={source_filename}"
+                    )
+                    convert_station_file_to_csv(upload_path, target)
+                    upload_path.unlink(missing_ok=True)
+                    stored = store_station_csv_file(
+                        payload.user_id,
+                        model_id,
+                        target,
+                        source_filename=source_filename,
+                        content_type=content_type,
+                    )
+                    _log_user_input(
+                        f"station_data row stored in {USER_INPUT_TABLE} "
+                        f"user_id={payload.user_id} model_id={model_id} "
+                        f"bytes={stored.get('nbytes')}"
+                    )
+
+                paths[kind] = target
+                size = target.stat().st_size if target.exists() else 0
+                _log_user_input(
+                    f"using current {kind} file for run "
+                    f"user_id={payload.user_id} model_id={model_id} bytes={size}"
+                )
+            except Exception as exc:  # noqa: BLE001 - optional; fall back to stored/bundled
+                logger.warning("Failed to download/store user input %s from %s: %s", kind, url, exc)
+                _log_user_input(f"{kind} download/store failed: {exc}")
+
+    for kind in requested_kinds:
+        if kind not in paths:
+            stored = _materialize_stored_user_input(payload, model_id, kind, dest_dir)
+            if stored is not None:
+                paths[kind] = stored
+
     if paths:
-        print(f"[FFRM] using uploaded inputs: {', '.join(sorted(paths))}", flush=True)
+        _log_user_input(f"resolved user inputs for run: {', '.join(sorted(paths))}")
     return paths
 
 
@@ -1035,4 +1170,8 @@ def db_raster_table(table: str):
 
 
 if __name__ == "__main__":
-    uvicorn.run("api:app", host="0.0.0.0", port=8090, reload=True)
+    # Host/port are env-configurable so they can be changed from the .env file
+    # without touching code (defaults match the bundled docker-compose setup).
+    host = os.environ.get("STORCITO_HOST", "0.0.0.0")
+    port = int(os.environ.get("STORCITO_PORT", "8090"))
+    uvicorn.run("api:app", host=host, port=port, reload=True)

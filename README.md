@@ -10,13 +10,23 @@ Create local data folders:
 mkdir -p INPUT OUTPUT
 ```
 
-Start the interactive menu:
+Start the API stack:
 
 ```bash
-docker compose run --rm storcito
+docker compose up -d
 ```
 
-When the app asks for folders, use:
+The public API is served through HAProxy at `http://localhost:8090`, backed by
+four STORCITO API containers: `storcito-api-1` through `storcito-api-4`.
+HAProxy stats are available at `http://localhost:8406/stats`.
+
+Open a shell in the first API container:
+
+```bash
+docker compose exec storcito-api-1 bash
+```
+
+When the app or scripts ask for folders, use:
 
 ```text
 /app/INPUT
@@ -29,8 +39,8 @@ Generated files in `/app/OUTPUT` are written back to local `OUTPUT/`.
 ## Run another script
 
 ```bash
-docker compose run --rm storcito FFRM_dinamic.py
-docker compose run --rm storcito FFRM_estatic.py
+docker compose exec storcito-api-1 python FFRM_dinamic.py
+docker compose exec storcito-api-1 python FFRM_estatic.py
 ```
 
 Those scripts currently contain hardcoded Windows paths. To run them in Docker,

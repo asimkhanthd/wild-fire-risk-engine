@@ -8,7 +8,7 @@ Storing the original bytes and writing them back verbatim on reconstruction keep
 the engine untouched while removing all on-disk INPUT reliance.
 
 Run inside the storcito container (has psycopg2/netCDF4 and sees /app/INPUT):
-    docker exec storcito-storcito-1 micromamba run -n storcito \
+    docker exec storcito-api-1 micromamba run -n storcito \
         python scripts/seed_blobs.py all          # FWI (all dates) + HIST scenes
     ... python scripts/seed_blobs.py fwi 2         # only first 2 FWI dates (test)
 Connection comes from PG* env vars.

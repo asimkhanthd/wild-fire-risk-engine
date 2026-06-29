@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 import zipfile
@@ -12,7 +13,7 @@ from functools import lru_cache
 # `make restart` to pick up code changes.
 import pyogrio  # noqa: F401
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -31,13 +32,35 @@ from rasterio.warp import transform_bounds, transform_geom
 from shapely.geometry import box, mapping, shape
 
 from FFRM_estatic_aoi import run_static_aoi, run_static_aoi_for_geometry
-from FR.aoi import build_geojson_aoi
-from FR.FWI import available_fwi_dates, highest_temperature_fwi_dates
+from FR.aoi import build_geojson_aoi, reproject_geometry, DEFAULT_PROJECTED_CRS
+from FR.db_reconstruct import (
+    reconstruct_inputs,
+    available_fwi_dates_db,
+    highest_temperature_fwi_dates_db,
+)
 
 app = FastAPI(title="STORCITO API")
 BASE_DIR = Path(__file__).resolve().parent
 AOI_OUTPUT_ROOT = (BASE_DIR / "OUTPUT" / "aoi").resolve()
+JOBS_OUTPUT_ROOT = (BASE_DIR / "OUTPUT" / "jobs").resolve()
 BERLIN_TZ = ZoneInfo("Europe/Berlin")
+
+# Whole-region engines triggered by their own endpoints, each mapped to its
+# script and the run-flag overrides needed to skip layers with no DB data.
+ENGINE_SCRIPTS = {
+    "static": {
+        "script": "FFRM_static.py",
+        "result": "forest_fire_risk_map.tif",
+        # HIST is now reconstructed from the `hist` table + on-disk PRE/POST scenes.
+        "run_flags": {"FFRM_RUN_FHIST": "1"},
+    },
+    "dynamic": {
+        "script": "FFRM_dinamic.py",
+        "result": "forest_fire_risk_map_dinamico.tif",
+        # TWI / LST are now reconstructed from the `twi` / `lst` tables.
+        "run_flags": {"FFRM_RUN_TWI": "1", "FFRM_RUN_LST": "1"},
+    },
+}
 
 COVERAGE_INPUT_RASTERS = {
     "DTM": BASE_DIR / "INPUT" / "DTM" / "DTM.tif",
@@ -110,6 +133,16 @@ def _to_berlin_time(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=BERLIN_TZ)
     return value.astimezone(BERLIN_TZ)
+
+
+def _wildfire_target_date(payload: WildfireCalculationRequest) -> date:
+    start_local = _to_berlin_time(payload.start_date)
+    end_local = _to_berlin_time(payload.end_date)
+
+    if start_local.date() != end_local.date():
+        raise ValueError("start_date and end_date must be on the same Europe/Berlin local date.")
+
+    return start_local.date()
 
 
 def _wildfire_date_range(payload: WildfireCalculationRequest, calculation_mode: str) -> tuple[date | None, date]:
@@ -405,7 +438,7 @@ def _available_data_coverage_geojson() -> dict[str, Any]:
         coverage_geometry = mapping(coverage_box)
         coverage_method = "intersection_of_core_input_raster_bounds"
 
-    dates = [day.isoformat() for day in available_fwi_dates(BASE_DIR / "INPUT" / "FWI")]
+    dates = [day.isoformat() for day in available_fwi_dates_db()]
     bounds = [float(value) for value in shape(coverage_geometry).bounds]
     coverage = {
         "type": "FeatureCollection",
@@ -430,24 +463,30 @@ def _available_data_coverage_geojson() -> dict[str, Any]:
     _write_cached_coverage(signature, coverage)
     return coverage
 
-def _job_relative_path(file_path: str) -> str | None:
+def _job_relative_path(file_path: str, root: Path = AOI_OUTPUT_ROOT) -> str | None:
     try:
         resolved = Path(file_path).resolve()
-        return resolved.relative_to(AOI_OUTPUT_ROOT).as_posix()
+        return resolved.relative_to(root).as_posix()
     except (ValueError, OSError):
         return None
 
 
-def _augment_with_urls(outputs: dict[str, str], request: Request | None) -> dict[str, Any]:
+def _augment_with_urls(
+    outputs: dict[str, str],
+    request: Request | None,
+    *,
+    root: Path = AOI_OUTPUT_ROOT,
+    url_prefix: str = "results",
+) -> dict[str, Any]:
     base_url = _public_base_url(request)
     urls: dict[str, str] = {}
     for key, value in outputs.items():
         if not isinstance(value, str):
             continue
-        rel = _job_relative_path(value)
+        rel = _job_relative_path(value, root)
         if rel is None:
             continue
-        urls[key] = f"{base_url}/results/{rel}" if base_url else f"/results/{rel}"
+        urls[key] = f"{base_url}/{url_prefix}/{rel}" if base_url else f"/{url_prefix}/{rel}"
     enriched: dict[str, Any] = dict(outputs)
     if urls:
         enriched["urls"] = urls
@@ -523,6 +562,23 @@ def _run_wildfire_payload(payload: WildfireCalculationRequest, request: Request 
     )
     enriched_outputs = _augment_with_urls(outputs, request)
 
+    db_info, db_error = _store_results_to_db(
+        outputs,
+        metadata={
+            "job_id": outputs.get("request_id"),
+            "session_id": payload.session_id,
+            "user_id": payload.user_id,
+            "model_id": payload.model_id,
+            "engine": "static_aoi",
+            "calculation_mode": calculation_mode,
+            "request_type": "wildfire_payload",
+            "target_date": target_date.isoformat(),
+            "country": payload.country,
+            "lkr": payload.lkr,
+        },
+        aoi_wgs84=reproject_geometry(output_aoi, DEFAULT_PROJECTED_CRS, "EPSG:4326"),
+    )
+
     callback_info: dict[str, Any] | None = None
     callback_error: str | None = None
     if payload.callback_url:
@@ -554,7 +610,39 @@ def _run_wildfire_payload(payload: WildfireCalculationRequest, request: Request 
         response["callback"] = callback_info
     if callback_error is not None:
         response["callback_error"] = callback_error
+    if db_info is not None:
+        response["db_store"] = db_info
+    if db_error is not None:
+        response["db_store_error"] = db_error
     return response
+
+
+def _store_results_to_db(
+    outputs: dict[str, Any],
+    *,
+    metadata: dict[str, Any],
+    aoi_wgs84=None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Store the finished result maps into PostGIS (best-effort).
+
+    Controlled by STORCITO_STORE_RESULTS (default on). Never raises: a storage
+    failure is reported back to the caller as an error string so the simulation
+    response still succeeds, mirroring the callback-error handling.
+    """
+    flag = os.getenv("STORCITO_STORE_RESULTS", "1").strip().lower()
+    if flag in {"0", "false", "no", "off"}:
+        return None, None
+    try:
+        from FR.db_store import store_result_maps
+
+        aoi_geojson = json.dumps(mapping(aoi_wgs84)) if aoi_wgs84 is not None else None
+        info = store_result_maps(outputs, metadata=metadata, aoi_geojson=aoi_geojson)
+        return info, None
+    except Exception as exc:  # noqa: BLE001 - report and keep the result
+        msg = f"{type(exc).__name__}: {exc}"
+        logger.warning("STORCITO result DB store failed: %s", msg)
+        print(f"[STORCITO DB] store failed: {msg}", flush=True)
+        return None, str(exc)
 
 
 def _raise_aoi_http_error(exc: Exception) -> None:
@@ -578,6 +666,140 @@ def _raise_aoi_http_error(exc: Exception) -> None:
         raise HTTPException(status_code=422, detail=detail) from exc
     raise HTTPException(status_code=500, detail=detail) from exc
 
+
+def _create_job_dir(payload: WildfireCalculationRequest) -> tuple[str, Path]:
+    """Build a per-request job directory named from the request IDs."""
+    raw = f"{payload.user_id}_{payload.model_id}_{payload.session_id}"
+    job_id = re.sub(r"[^A-Za-z0-9_-]", "_", raw).strip("_")[:120] or "job"
+    job_dir = JOBS_OUTPUT_ROOT / job_id
+    if job_dir.exists():
+        # Avoid clobbering a previous run for the same IDs.
+        job_id = f"{job_id}_{datetime.now(BERLIN_TZ).strftime('%Y%m%dT%H%M%S')}"
+        job_dir = JOBS_OUTPUT_ROOT / job_id
+    resolved = job_dir.resolve()
+    if resolved != JOBS_OUTPUT_ROOT and not str(resolved).startswith(str(JOBS_OUTPUT_ROOT) + os.sep):
+        raise ValueError("Invalid job identifier derived from request IDs.")
+    return job_id, resolved
+
+
+def _wildfire_clip_geometry_wgs84(payload: WildfireCalculationRequest):
+    """Boundary (WGS84) used to clip the datasets while exporting from the DB.
+
+    Raises ValueError (-> 422) when the request carries no boundary, which is
+    required for the whole-region static/dynamic engines.
+    """
+    projected = _wildfire_geometry(payload)  # EPSG:32629, includes buffer_distance
+    context_buffer_m = _wildfire_context_buffer(payload)
+    # Add the engines' internal 3000 m crop margin so the reconstructed data
+    # fully covers the area the engine later crops to.
+    processing = projected.buffer(context_buffer_m + 3000)
+    return reproject_geometry(processing, DEFAULT_PROJECTED_CRS, "EPSG:4326")
+
+
+def _run_engine_job(
+    payload: WildfireCalculationRequest,
+    engine: str,
+    request: Request | None,
+) -> dict[str, Any]:
+    """Reconstruct inputs from PostGIS into a per-request folder and run an engine."""
+    cfg = ENGINE_SCRIPTS[engine]
+    target_date = _wildfire_target_date(payload)
+    clip_geom = _wildfire_clip_geometry_wgs84(payload)
+
+    job_id, job_dir = _create_job_dir(payload)
+    input_dir = job_dir / "INPUT"
+    output_dir = job_dir / "OUTPUT"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    reconstruction = reconstruct_inputs(
+        input_dir,
+        engine=engine,
+        target_date=target_date,
+        clip_geom=clip_geom,
+        clip_geom_crs="EPSG:4326",
+    )
+
+    env = {
+        **os.environ,
+        "FFRM_BASE_DIR": str(job_dir),
+        "FFRM_OUTPUT_DIR": str(output_dir),
+        "MPLBACKEND": "Agg",
+        **cfg["run_flags"],
+    }
+    proc = subprocess.run(
+        ["python", cfg["script"]],
+        cwd=str(BASE_DIR),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    (output_dir / "engine.log").write_text(
+        f"returncode={proc.returncode}\n--- stdout ---\n{proc.stdout}\n--- stderr ---\n{proc.stderr}\n"
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"{engine} engine failed (see engine.log):\n{proc.stderr[-2000:]}")
+
+    result_map = output_dir / cfg["result"]
+    if not result_map.is_file():
+        raise RuntimeError(
+            f"{engine} engine finished but {cfg['result']} was not produced.\n{proc.stdout[-1000:]}"
+        )
+
+    continuous = "mapa_final_dinamico.tif" if engine == "dynamic" else "mapa_final.tif"
+    outputs = {
+        "final_map": str(result_map),
+        "continuous_map": str(output_dir / continuous),
+        "job_dir": str(job_dir),
+    }
+    enriched = _augment_with_urls(outputs, request, root=JOBS_OUTPUT_ROOT, url_prefix="jobs")
+
+    response: dict[str, Any] = {
+        "status": "success",
+        "engine": engine,
+        "job_id": job_id,
+        "session_id": payload.session_id,
+        "target_date": target_date.isoformat(),
+        "reconstruction": reconstruction,
+        "outputs": enriched,
+    }
+
+    db_info, db_error = _store_results_to_db(
+        outputs,
+        metadata={
+            "job_id": job_id,
+            "session_id": payload.session_id,
+            "user_id": payload.user_id,
+            "model_id": payload.model_id,
+            "engine": engine,
+            "calculation_mode": engine,
+            "request_type": "engine_job",
+            "target_date": target_date.isoformat(),
+            "country": payload.country,
+            "lkr": payload.lkr,
+        },
+        aoi_wgs84=reproject_geometry(
+            _wildfire_geometry(payload), DEFAULT_PROJECTED_CRS, "EPSG:4326"
+        ),
+    )
+    if db_info is not None:
+        response["db_store"] = db_info
+    if db_error is not None:
+        response["db_store_error"] = db_error
+
+    if payload.callback_url:
+        try:
+            zip_path = _zip_job_outputs(output_dir)
+            response["result_zip"] = str(zip_path)
+            response["callback"] = _post_result_callback(
+                payload.callback_url, zip_path, payload.session_id
+            )
+        except Exception as exc:  # noqa: BLE001 - report callback failure, keep result
+            response["callback_error"] = str(exc)
+
+    return response
+
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to STORCITO API. Use POST /run-dynamic or POST /run-static to trigger jobs."}
@@ -594,47 +816,40 @@ def status():
 
 
 @app.post("/run-dynamic")
-def run_dynamic():
+def run_dynamic(payload: WildfireCalculationRequest, request: Request):
     """
-    Runs the FFRM_dinamic.py script.
+    Reconstruct inputs from PostGIS (clipped to the request boundary) and run the
+    dynamic risk engine (FFRM_dinamic.py).
     """
     try:
-        # Run script as a subprocess
-        result = subprocess.run(["python", "FFRM_dinamic.py"], capture_output=True, text=True)
-        if result.returncode == 0:
-            return {"status": "success", "output": result.stdout}
-        else:
-            return {"status": "error", "error": result.stderr}
+        return _run_engine_job(payload, "dynamic", request)
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        _raise_aoi_http_error(e)
+
 
 @app.post("/run-static")
-def run_static():
+def run_static(payload: WildfireCalculationRequest, request: Request):
     """
-    Runs the FFRM_estatic.py script.
+    Reconstruct inputs from PostGIS (clipped to the request boundary) and run the
+    whole-region static risk engine (FFRM_static.py).
     """
     try:
-        # Run script as a subprocess
-        result = subprocess.run(["python", "FFRM_estatic.py"], capture_output=True, text=True)
-        if result.returncode == 0:
-            return {"status": "success", "output": result.stdout}
-        else:
-            return {"status": "error", "error": result.stderr}
+        return _run_engine_job(payload, "static", request)
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        _raise_aoi_http_error(e)
 
 
 @app.get("/available-static-dates")
 def available_static_dates():
-    # One representative day per year: the available FWI day with the highest
-    # air temperature in that year.
-    dates = highest_temperature_fwi_dates(BASE_DIR / "INPUT" / "FWI")
+    # One representative day per year: the FWI day with the highest air
+    # temperature in that year, from the `fwi_files` table.
+    dates = highest_temperature_fwi_dates_db()
     return {"dates": [day.isoformat() for day in dates]}
 
 
 @app.get("/available-dynamic-dates")
 def available_dynamic_dates():
-    dates = available_fwi_dates(BASE_DIR / "INPUT" / "FWI")
+    dates = available_fwi_dates_db()
     return {"dates": [day.isoformat() for day in dates]}
 
 
@@ -659,7 +874,30 @@ def run_static_aoi_request(payload: StaticAOIRequest, request: Request):
             buffer_m=payload.buffer_m,
             context_buffer_m=payload.context_buffer_m,
         )
-        return {"status": "success", "outputs": _augment_with_urls(outputs, request)}
+        result: dict[str, Any] = {
+            "status": "success",
+            "outputs": _augment_with_urls(outputs, request),
+        }
+        db_info, db_error = _store_results_to_db(
+            outputs,
+            metadata={
+                "job_id": outputs.get("request_id"),
+                "user_id": None,
+                "model_id": None,
+                "session_id": None,
+                "engine": "static_aoi",
+                "calculation_mode": "static",
+                "request_type": "point",
+                "target_date": payload.date.isoformat(),
+                "longitude": payload.longitude,
+                "latitude": payload.latitude,
+            },
+        )
+        if db_info is not None:
+            result["db_store"] = db_info
+        if db_error is not None:
+            result["db_store_error"] = db_error
+        return result
     except Exception as e:
         _raise_aoi_http_error(e)
 
@@ -704,6 +942,97 @@ def download_result(request_id: str, file_path: str):
 
     media_type = "image/tiff" if target.suffix.lower() in {".tif", ".tiff"} else None
     return FileResponse(target, media_type=media_type, filename=target.name)
+
+
+@app.get("/jobs/{job_id}/{file_path:path}")
+def download_job_result(job_id: str, file_path: str):
+    """Serve a file from a per-request engine job directory (OUTPUT/jobs)."""
+    try:
+        target = (JOBS_OUTPUT_ROOT / job_id / file_path).resolve()
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail="Invalid result path.") from exc
+
+    job_root = (JOBS_OUTPUT_ROOT / job_id).resolve()
+    if not str(target).startswith(str(job_root) + os.sep) and target != job_root:
+        raise HTTPException(status_code=400, detail="Invalid result path.")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Result not found.")
+
+    media_type = "image/tiff" if target.suffix.lower() in {".tif", ".tiff"} else None
+    return FileResponse(target, media_type=media_type, filename=target.name)
+
+
+def _raise_db_http_error(exc: Exception) -> None:
+    """Map db_catalog errors to HTTP responses (no db_catalog import needed here)."""
+    if type(exc).__name__ == "UnknownTable":
+        raise HTTPException(status_code=404, detail=f"Unknown table: {exc}") from exc
+    if isinstance(exc, ValueError):
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if isinstance(exc, ModuleNotFoundError):
+        raise HTTPException(
+            status_code=503,
+            detail="Database driver unavailable (psycopg2 not installed; rebuild the image).",
+        ) from exc
+    raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/db/tables")
+def db_list_tables():
+    """List the public PostGIS tables (vector / raster) with kind, srid and row estimate."""
+    try:
+        from FR.db_catalog import list_tables
+
+        return {"tables": list_tables()}
+    except Exception as exc:  # noqa: BLE001
+        _raise_db_http_error(exc)
+
+
+@app.get("/db/tables/{table}")
+def db_describe_table(table: str):
+    """Describe one table: columns, srid, exact row count, WGS84 extent, region/date metadata."""
+    try:
+        from FR.db_catalog import describe_table
+
+        return describe_table(table)
+    except Exception as exc:  # noqa: BLE001
+        _raise_db_http_error(exc)
+
+
+@app.get("/db/vector/{table}")
+def db_vector_table(
+    table: str,
+    limit: int = Query(default=100, ge=1, le=1000),
+    bbox: str | None = Query(default=None, description="minLon,minLat,maxLon,maxLat (WGS84)"),
+    region: str | None = Query(default=None),
+):
+    """Return a vector table as a GeoJSON FeatureCollection (WGS84), capped by `limit`."""
+    try:
+        from FR.db_catalog import vector_geojson
+
+        parsed_bbox = None
+        if bbox is not None:
+            parts = [p for p in bbox.split(",") if p.strip() != ""]
+            if len(parts) != 4:
+                raise ValueError("bbox must be 'minLon,minLat,maxLon,maxLat'.")
+            try:
+                parsed_bbox = tuple(float(p) for p in parts)
+            except ValueError as exc:
+                raise ValueError("bbox values must be numeric.") from exc
+        return vector_geojson(table, limit=limit, bbox=parsed_bbox, region=region)
+    except Exception as exc:  # noqa: BLE001
+        _raise_db_http_error(exc)
+
+
+@app.get("/db/raster/{table}")
+def db_raster_table(table: str):
+    """Summarise a raster table: tile count, srid, bands, WGS84 extent, regions/dates."""
+    try:
+        from FR.db_catalog import raster_metadata
+
+        return raster_metadata(table)
+    except Exception as exc:  # noqa: BLE001
+        _raise_db_http_error(exc)
+
 
 if __name__ == "__main__":
     uvicorn.run("api:app", host="0.0.0.0", port=8090, reload=True)

@@ -1,4 +1,49 @@
 services:
+  postgis:
+    # pgRouting image is built on top of PostGIS, so it bundles
+    # postgis, postgis_raster, postgis_topology and pgrouting.
+    image: pgrouting/pgrouting:16-3.5-3.7
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gis}
+      POSTGRES_USER: ${POSTGRES_USER:-gis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gis}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs once on first init (empty data dir) to enable extensions.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gis} -d ${POSTGRES_DB:-gis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  geotools:
+    # QGIS + GDAL (raster2pgsql) + unzip/unrar/wget/curl utilities.
+    build:
+      context: .
+      dockerfile: Dockerfile.geotools
+    image: geotools:latest
+    stdin_open: true
+    tty: true
+    environment:
+      # Connection details for the bundled PostGIS service, for raster2pgsql piping.
+      PGHOST: postgis
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-gis}
+      PGUSER: ${POSTGRES_USER:-gis}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-gis}
+    volumes:
+      - .:/data
+      - ./INPUT:/data/INPUT
+      - ./OUTPUT:/data/OUTPUT
+    depends_on:
+      postgis:
+        condition: service_healthy
+    command: ["sleep", "infinity"]
+
   storcito:
     build: .
     image: storcito:latest
@@ -18,6 +63,13 @@ services:
       PROJ_LIB: /opt/conda/envs/storcito/share/proj
       PROJ_DATA: /opt/conda/envs/storcito/share/proj
       PROJ_NETWORK: "ON"
+      # Connection details for the bundled PostGIS service.
+      PGHOST: postgis
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-gis}
+      PGUSER: ${POSTGRES_USER:-gis}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-gis}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gis}:${POSTGRES_PASSWORD:-gis}@postgis:5432/${POSTGRES_DB:-gis}
       # Optional: external URL used to build download links returned to wildfire.
       # Leave unset to infer from the inbound request.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
@@ -32,14 +84,13 @@ services:
       # Allow the container to reach services running on the Docker host
       # (e.g. wildfire backend on http://host.docker.internal:8000) on Linux.
       - "host.docker.internal:host-gateway"
-    networks:
-      - default
-      - spatialhub-net
+    depends_on:
+      postgis:
+        condition: service_healthy
     command: >
       uvicorn api:app
       --host 0.0.0.0
       --port 8090
 
-networks:
-  spatialhub-net:
-    external: true
+volumes:
+  pgdata:

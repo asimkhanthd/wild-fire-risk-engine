@@ -24,7 +24,14 @@ import FR.MDT as Mdt
 import FR.NDVI as Ndvi
 import FR.infra as Infra
 from FR.ahp import calculate_weights, consistency_ratio, normalize_matrix
-from FR.aoi import DEFAULT_PROJECTED_CRS, build_point_aoi, crop_raster_to_geometry, write_aoi_geojson
+from FR.aoi import (
+    DEFAULT_PROJECTED_CRS,
+    build_point_aoi,
+    crop_raster_to_geometry,
+    reproject_geometry,
+    write_aoi_geojson,
+)
+import FR.db_reconstruct as DbReconstruct
 
 BASE_DIR = Path(__file__).resolve().parent
 INPUT_DIR = BASE_DIR / "INPUT"
@@ -318,15 +325,6 @@ def run_static_aoi_for_geometry(
     if start_date is not None and start_date > target_date:
         raise ValueError("FWI start date must be before or equal to the end date.")
 
-    if "meteo" in active_top_levels:
-        available_dates = Fwi.available_fwi_dates(INPUT_DIR / "FWI")
-        if start_date is not None and start_date not in available_dates:
-            available = ", ".join(day.isoformat() for day in available_dates)
-            raise ValueError(f"FWI start date {start_date.isoformat()} is not available. Available dates: {available}")
-        if target_date not in available_dates:
-            available = ", ".join(day.isoformat() for day in available_dates)
-            raise ValueError(f"FWI date {target_date.isoformat()} is not available. Available dates: {available}")
-
     request_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{uuid4().hex[:8]}"
     job_dir = Path(output_root) / request_id
     inputs_dir = job_dir / "inputs"
@@ -340,22 +338,46 @@ def run_static_aoi_for_geometry(
     write_aoi_geojson(output_aoi, job_dir / "aoi.geojson")
     write_aoi_geojson(processing_aoi, job_dir / "processing_aoi.geojson")
 
-    dtm_source = Path(dtm_path) if dtm_path else INPUT_DIR / "DTM" / "DTM.tif"
-    print(f"[FFRM] DTM source: {'UPLOADED' if dtm_path else 'bundled'} -> {dtm_source}")
+    # Materialise this AOI's INPUT/ tree from PostGIS (rasters/vectors clipped to
+    # the processing AOI; FWI + HIST scenes written back from their blob tables),
+    # so the run sources all regional data from the database rather than on-disk
+    # files. An uploaded DTM, if provided, still overrides the DB terrain.
+    clip_geom_wgs84 = reproject_geometry(processing_aoi, DEFAULT_PROJECTED_CRS, "EPSG:4326")
+    input_dir = job_dir / "db_input"
+    print(f"[FFRM] reconstructing INPUT from PostGIS -> {input_dir}", flush=True)
+    DbReconstruct.reconstruct_inputs(
+        input_dir,
+        engine="static",
+        target_date=target_date,
+        clip_geom=clip_geom_wgs84,
+        clip_geom_crs="EPSG:4326",
+    )
+
+    if "meteo" in active_top_levels:
+        available_dates = Fwi.available_fwi_dates(input_dir / "FWI")
+        if start_date is not None and start_date not in available_dates:
+            available = ", ".join(day.isoformat() for day in available_dates)
+            raise ValueError(f"FWI start date {start_date.isoformat()} is not available. Available dates: {available}")
+        if target_date not in available_dates:
+            available = ", ".join(day.isoformat() for day in available_dates)
+            raise ValueError(f"FWI date {target_date.isoformat()} is not available. Available dates: {available}")
+
+    dtm_source = Path(dtm_path) if dtm_path else input_dir / "DTM" / "DTM.tif"
+    print(f"[FFRM] DTM source: {'UPLOADED' if dtm_path else 'database'} -> {dtm_source}")
     cropped_dtm = crop_raster_to_geometry(dtm_source, inputs_dir / "DTM.tif", processing_aoi)
-    cropped_b4 = crop_raster_to_geometry(INPUT_DIR / "Sentinel" / "B4.tiff", inputs_dir / "B4.tiff", processing_aoi)
-    cropped_b8 = crop_raster_to_geometry(INPUT_DIR / "Sentinel" / "B8.tiff", inputs_dir / "B8.tiff", processing_aoi)
-    cropped_fuels = crop_raster_to_geometry(INPUT_DIR / "FUELS" / "FUELS.tif", inputs_dir / "FUELS.tif", processing_aoi)
+    cropped_b4 = crop_raster_to_geometry(input_dir / "Sentinel" / "B4.tiff", inputs_dir / "B4.tiff", processing_aoi)
+    cropped_b8 = crop_raster_to_geometry(input_dir / "Sentinel" / "B8.tiff", inputs_dir / "B8.tiff", processing_aoi)
+    cropped_fuels = crop_raster_to_geometry(input_dir / "FUELS" / "FUELS.tif", inputs_dir / "FUELS.tif", processing_aoi)
 
     Mdt.mdt(cropped_dtm, output_folder=base_output_dir, export_image=True, show_plots=False)
     Ndvi.ndvi(cropped_b4, cropped_b8, output_folder=base_output_dir, export_image=True)
     if "fhist" in active_top_levels:
-        Fhist.fire_history(input_folder=INPUT_DIR / "HIST", output_folder=base_output_dir, export_image=True, show_plots=False)
+        Fhist.fire_history(input_folder=input_dir / "HIST", output_folder=base_output_dir, export_image=True, show_plots=False)
     Fmt.fmt(cropped_fuels, output_folder=base_output_dir, export_image=True, show_plots=False)
 
     processing_reference = base_output_dir / "TIFs" / "MDT_RISK_MAP.tif"
     Infra.infrastructure(
-        INPUT_DIR / "INFRA" / "galicia_entera.shp",
+        input_dir / "INFRA" / "galicia_entera.shp",
         output_folder=base_output_dir,
         ref_raster=processing_reference,
         export_image=True,
@@ -364,8 +386,8 @@ def run_static_aoi_for_geometry(
         aoi_crs=DEFAULT_PROJECTED_CRS,
     )
     Wui.wui(
-        INPUT_DIR / "INFRA" / "galicia_entera.shp",
-        INPUT_DIR / "IUF" / "CLC_galicia.shp",
+        input_dir / "INFRA" / "galicia_entera.shp",
+        input_dir / "IUF" / "CLC_galicia.shp",
         output_folder=base_output_dir,
         reference_file=processing_reference,
         export_image=True,
@@ -378,9 +400,9 @@ def run_static_aoi_for_geometry(
             print(f"[FFRM] FWI source: UPLOADED station file -> {station_data_path}")
             _fwi_from_station_file(station_data_path, processing_reference, base_output_dir, inputs_dir)
         else:
-            print("[FFRM] FWI source: bundled netCDF series")
+            print("[FFRM] FWI source: database netCDF series")
             Fwi.f_w_index(
-                INPUT_DIR / "FWI",
+                input_dir / "FWI",
                 output_folder=base_output_dir,
                 export_image=True,
                 show_plots=False,
@@ -438,6 +460,7 @@ def run_static_aoi_for_geometry(
 
     if not keep_intermediate:
         shutil.rmtree(base_output_dir)
+        shutil.rmtree(input_dir, ignore_errors=True)
 
     return {key: str(value) for key, value in outputs.items()}
 
